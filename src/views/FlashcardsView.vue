@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, watch, inject, h } from 'vue'
 import { marked } from 'marked'
 import {
   X,
@@ -837,11 +837,44 @@ onMounted(() => {
   if (registerRefresh) {
     registerRefresh(String(route.name), refreshFlashcards)
   }
+
+  // Register subheader with refresh button
+  if (setSubheader && !error.value) {
+    setSubheader({
+      right: () => [
+        h(SubheaderButton, {
+          title: 'Refresh',
+          onClick: refreshFlashcards,
+        }, {
+          default: () => h(RefreshCw, { size: 16 })
+        })
+      ]
+    })
+  }
 })
 
 // Cleanup on unmount
 onUnmounted(() => {
   document.body.classList.remove('study-mode')
+  if (setSubheader) {
+    setSubheader(null)
+  }
+})
+
+// Re-register subheader when activated (for keep-alive)
+onActivated(() => {
+  if (setSubheader && !error.value) {
+    setSubheader({
+      right: () => [
+        h(SubheaderButton, {
+          title: 'Refresh',
+          onClick: refreshFlashcards,
+        }, {
+          default: () => h(RefreshCw, { size: 16 })
+        })
+      ]
+    })
+  }
 })
 </script>
 
