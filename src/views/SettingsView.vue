@@ -454,7 +454,6 @@ cacheExpiryMinutes.value = getCacheExpiryMinutes()
             <h2>General Settings</h2>
             <p class="description">Basic dashboard configuration and preferences.</p>
 
-
             <div class="form-group">
               <label class="checkbox-label">
                 <input
@@ -612,7 +611,7 @@ cacheExpiryMinutes.value = getCacheExpiryMinutes()
                 placeholder="Enter your API key (optional)"
                 class="input"
               />
-              <p class="field-hint">Only needed if your Craft share requires authentication</p>
+              <p class="field-hint">Only needed if you set your API as private (recommended)</p>
             </div>
 
             <div class="form-group">
