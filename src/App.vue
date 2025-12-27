@@ -44,22 +44,25 @@ const isDashboard = computed(() => route.name === 'dashboard' || route.path === 
 const currentViewName = computed(() => {
   const routeName = route.name
   const routePath = route.path
-  
+
   if (routeName === 'dashboard' || routePath === '/') {
     return 'Dashboard'
   }
-  
+
   const viewNames: Record<string, string> = {
-    'tasks': 'Tasks',
-    'flashcards': 'Flashcards',
-    'music': 'Music',
-    'graph': 'Graph',
-    'bookmarks': 'Bookmarks',
-    'rss': 'RSS',
-    'settings': 'Settings',
+    tasks: 'Tasks',
+    flashcards: 'Flashcards',
+    music: 'Music',
+    graph: 'Graph',
+    bookmarks: 'Bookmarks',
+    rss: 'RSS',
+    settings: 'Settings',
   }
-  
-  return viewNames[String(routeName)] || String(routeName).charAt(0).toUpperCase() + String(routeName).slice(1)
+
+  return (
+    viewNames[String(routeName)] ||
+    String(routeName).charAt(0).toUpperCase() + String(routeName).slice(1)
+  )
 })
 
 // Pane management (only for dashboard)
@@ -99,17 +102,21 @@ const setSubheader = (content: SubheaderContent) => {
 provide('setSubheader', setSubheader)
 
 // Watch route to clear subheader when navigating away
-watch(() => route.name, (newRoute, oldRoute) => {
-  // Clear subheader when route changes (each view will set its own)
-  // Only clear if not going to dashboard (dashboard handles its own)
-  if (newRoute !== 'dashboard') {
-    // Clear immediately, then each view will set its own in onMounted/onActivated
-    subheaderContent.value = null
-  } else if (newRoute === 'dashboard') {
-    // Clear when going to dashboard (dashboard renders its own)
-    subheaderContent.value = null
-  }
-}, { immediate: false })
+watch(
+  () => route.name,
+  (newRoute, oldRoute) => {
+    // Clear subheader when route changes (each view will set its own)
+    // Only clear if not going to dashboard (dashboard handles its own)
+    if (newRoute !== 'dashboard') {
+      // Clear immediately, then each view will set its own in onMounted/onActivated
+      subheaderContent.value = null
+    } else if (newRoute === 'dashboard') {
+      // Clear when going to dashboard (dashboard renders its own)
+      subheaderContent.value = null
+    }
+  },
+  { immediate: false },
+)
 
 const handleRefresh = () => {
   const currentRoute = String(route.name)
@@ -138,7 +145,7 @@ const navigationItems = computed(() => {
     { path: '/bookmarks', name: 'Bookmarks', icon: Bookmark, show: showBookmarksTab.value },
     { path: '/rss', name: 'RSS', icon: Rss, show: showRSSTab.value },
   ]
-  return items.filter(item => item.show)
+  return items.filter((item) => item.show)
 })
 
 // Mobile sidebar state
@@ -151,9 +158,12 @@ const closeMobileSidebar = () => {
 }
 
 // Close sidebar when route changes
-watch(() => route.path, () => {
-  closeMobileSidebar()
-})
+watch(
+  () => route.path,
+  () => {
+    closeMobileSidebar()
+  },
+)
 
 // App version (injected at build time)
 const appVersion = (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0') as string
@@ -391,23 +401,19 @@ onUnmounted(() => {
     window.removeEventListener('resize', checkScrollButtons)
   }
 })
-
 </script>
 
 <template>
   <div class="app">
     <!-- Mobile Sidebar Overlay -->
-    <div 
-      v-if="isMobileSidebarOpen" 
+    <div
+      v-if="isMobileSidebarOpen"
       class="mobile-sidebar-overlay"
       @click="closeMobileSidebar"
     ></div>
 
     <!-- Mobile Sidebar -->
-    <aside 
-      class="mobile-sidebar"
-      :class="{ 'open': isMobileSidebarOpen }"
-    >
+    <aside class="mobile-sidebar" :class="{ open: isMobileSidebarOpen }">
       <div class="mobile-sidebar-header">
         <div class="mobile-sidebar-brand">
           <img src="/favicon.svg" alt="Craftboard" class="mobile-sidebar-brand-icon" />
@@ -418,18 +424,18 @@ onUnmounted(() => {
         </button>
       </div>
       <div class="mobile-sidebar-content">
-      <nav class="mobile-sidebar-nav">
-        <router-link
-          v-for="item in navigationItems"
-          :key="item.path"
-          :to="item.path"
-          class="mobile-nav-link"
-          @click="closeMobileSidebar"
-        >
-          <component :is="item.icon" :size="18" />
-          <span>{{ item.name }}</span>
-        </router-link>
-      </nav>
+        <nav class="mobile-sidebar-nav">
+          <router-link
+            v-for="item in navigationItems"
+            :key="item.path"
+            :to="item.path"
+            class="mobile-nav-link"
+            @click="closeMobileSidebar"
+          >
+            <component :is="item.icon" :size="18" />
+            <span>{{ item.name }}</span>
+          </router-link>
+        </nav>
       </div>
       <div class="mobile-sidebar-footer">
         <button @click="toggleTheme" class="mobile-nav-link theme-toggle">
@@ -445,11 +451,13 @@ onUnmounted(() => {
           <div class="mobile-footer-left">
             <img src="/favicon.svg" alt="Craftboard" class="mobile-footer-icon" />
             <span>{{ dashboardTitle }}</span>
-            <span v-if="latestChangelogDate" class="mobile-footer-version">{{ latestChangelogDate }}</span>
+            <span v-if="latestChangelogDate" class="mobile-footer-version">{{
+              latestChangelogDate
+            }}</span>
           </div>
           <div class="mobile-footer-right">
             <span class="mobile-footer-about">Carlos González, 2025</span>
-            <span class="mobile-footer-contact">craft-dashboard@dende.gal</span>
+            <span class="mobile-footer-contact">craftboard@dende.gal</span>
             <a
               href="https://espazo.dende.gal/craftboard-documentation"
               target="_blank"
@@ -484,16 +492,16 @@ onUnmounted(() => {
             </router-link>
           </div>
           <!-- Mobile Hamburger Button -->
-          <button 
-            @click="toggleMobileSidebar" 
-            class="mobile-hamburger"
-            title="Open menu"
-          >
+          <button @click="toggleMobileSidebar" class="mobile-hamburger" title="Open menu">
             <Menu :size="20" />
           </button>
           <!-- Desktop Right Side -->
           <div class="nav-right desktop-nav">
-            <button @click="toggleTheme" class="nav-link theme-toggle" :title="currentTheme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'">
+            <button
+              @click="toggleTheme"
+              class="nav-link theme-toggle"
+              :title="currentTheme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'"
+            >
               <component :is="currentTheme === 'dark' ? Sun : Moon" :size="16" />
               <span>{{ currentTheme === 'light' ? 'Light' : 'Dark' }}</span>
             </button>
@@ -504,17 +512,17 @@ onUnmounted(() => {
           </div>
         </div>
         <!-- Subheader (below header) -->
-        <div v-if="(subheaderContent || isDashboard)" class="nav-subheader" :class="{ 'dashboard-subheader': isDashboard }">
+        <div
+          v-if="subheaderContent || isDashboard"
+          class="nav-subheader"
+          :class="{ 'dashboard-subheader': isDashboard }"
+        >
           <ViewSubheader v-if="isDashboard">
             <template #default>
               <PaneTabs @create-pane="showPaneNameModal = true" />
             </template>
             <template #right>
-              <button
-                @click="openAddWidgetModal"
-                class="add-widget-button"
-                title="Add Widget"
-              >
+              <button @click="openAddWidgetModal" class="add-widget-button" title="Add Widget">
                 <Plus :size="14" />
                 <span>Add Widget</span>
               </button>
@@ -543,7 +551,18 @@ onUnmounted(() => {
               <component :is="() => subheaderContent.default()" />
             </template>
             <template v-if="subheaderContent.right" #right>
-              <component :is="() => h(Fragment, {}, Array.isArray(subheaderContent.right()) ? subheaderContent.right() : [subheaderContent.right()])" />
+              <component
+                :is="
+                  () =>
+                    h(
+                      Fragment,
+                      {},
+                      Array.isArray(subheaderContent.right())
+                        ? subheaderContent.right()
+                        : [subheaderContent.right()],
+                    )
+                "
+              />
             </template>
           </ViewSubheader>
         </div>
@@ -566,7 +585,7 @@ onUnmounted(() => {
       </div>
       <div class="footer-right">
         <span class="footer-about">Carlos González, 2025</span>
-        <span class="footer-contact">craft-dashboard@dende.gal</span>
+        <span class="footer-contact">craftboard@dende.gal</span>
         <a
           href="https://espazo.dende.gal/craftboard-documentation"
           target="_blank"
@@ -604,7 +623,6 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
-
   </div>
 </template>
 
@@ -627,7 +645,9 @@ onUnmounted(() => {
   position: sticky;
   top: 0;
   z-index: 100;
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
 }
 
 body.study-mode .navbar {
@@ -1381,7 +1401,6 @@ body.study-mode .navbar {
     display: none !important;
   }
 
-
   .app-footer {
     display: none !important;
   }
@@ -1407,7 +1426,7 @@ body.study-mode .navbar {
     display: block !important;
     order: 2;
   }
-  
+
   .nav-brand {
     justify-content: center;
     width: 100%;
