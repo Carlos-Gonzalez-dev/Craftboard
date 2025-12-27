@@ -12,7 +12,7 @@ export const changelog: ChangelogEntry[] = [
       "Now it's possible to sort dashboard tabs",
       'Improved add widget list now they are grouped by category',
       'Removed unnecesary sections on Stats widgets',
-      'Fix BookmarkWidget it now uses the new CollectionID stored on settings',
+      'Fix BookmarkWidget it now uses the new CollectionID stored in settings',
     ],
   },
   {
