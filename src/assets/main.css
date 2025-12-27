@@ -1,0 +1,221 @@
+/* Dark Theme Variables - Vibrant */
+:root {
+  /* Layout Heights */
+  --navbar-height: 48px;
+  --subheader-height: 40px;
+  --footer-height: 48px;
+  
+  /* Background Colors - Deep with subtle blue undertone */
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #131a2e;
+  --bg-tertiary: #0d1220;
+  --bg-grid: rgba(99, 102, 241, 0.12);
+
+  /* Text Colors - Improved contrast for better readability */
+  --text-primary: #ffffff;
+  --text-secondary: #f1f5f9;
+  --text-tertiary: #cbd5e1;
+  --text-muted: #94a3b8;
+
+  /* Border Colors - More visible for better definition */
+  --border-primary: #475569;
+  --border-secondary: #334155;
+
+  /* Shadow Colors */
+  --shadow-light: rgba(0, 0, 0, 0.3);
+  --shadow-medium: rgba(0, 0, 0, 0.4);
+  --shadow-dark: rgba(0, 0, 0, 0.6);
+
+  /* Component Colors */
+  --widget-bg: #131a2e;
+  --widget-border: #3f3f46;
+
+  /* Button Colors - Vibrant accents */
+  --btn-primary-bg: #6366f1;
+  --btn-primary-hover: #4f46e5;
+  --btn-primary-text: #ffffff;
+
+  --btn-secondary-bg: #52525b;
+  --btn-secondary-hover: #71717a;
+  --btn-secondary-text: #fafafa;
+
+  --btn-danger-bg: #f43f5e;
+  --btn-danger-hover: #e11d48;
+  --btn-danger-text: #ffffff;
+
+  --btn-success-bg: #22c55e;
+  --btn-success-hover: #16a34a;
+  --btn-success-text: #ffffff;
+
+  /* Accent Colors */
+  --accent-purple: #a855f7;
+  --accent-pink: #ec4899;
+  --accent-cyan: #22d3ee;
+  --accent-orange: #f97316;
+
+  /* Input Colors */
+  --input-bg: #131a2e;
+  --input-border: #3f3f46;
+  --input-focus: #6366f1;
+  --input-text: #f8fafc;
+
+  /* Scrollbar Colors */
+  --scrollbar-track: #131a2e;
+  --scrollbar-track-border: #3f3f46;
+  --scrollbar-thumb: #52525b;
+  --scrollbar-thumb-hover: #71717a;
+  --scrollbar-thumb-border: #131a2e;
+}
+
+/* Light Theme Variables */
+[data-theme="light"] {
+  /* Background Colors - Light and clean */
+  --bg-primary: #f1f5f9;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --bg-grid: rgba(99, 102, 241, 0.08);
+
+  /* Text Colors - Dark for readability */
+  --text-primary: #0f172a;
+  --text-secondary: #1e293b;
+  --text-tertiary: #475569;
+  --text-muted: #64748b;
+
+  /* Border Colors - Subtle but visible */
+  --border-primary: #e2e8f0;
+  --border-secondary: #cbd5e1;
+
+  /* Shadow Colors - Lighter shadows for light theme */
+  --shadow-light: rgba(0, 0, 0, 0.1);
+  --shadow-medium: rgba(0, 0, 0, 0.15);
+  --shadow-dark: rgba(0, 0, 0, 0.25);
+
+  /* Component Colors */
+  --widget-bg: #f8fafc;
+  --widget-border: #e2e8f0;
+
+  /* Button Colors - Same vibrant accents */
+  --btn-primary-bg: #6366f1;
+  --btn-primary-hover: #4f46e5;
+  --btn-primary-text: #ffffff;
+
+  --btn-secondary-bg: #64748b;
+  --btn-secondary-hover: #475569;
+  --btn-secondary-text: #ffffff;
+
+  --btn-danger-bg: #f43f5e;
+  --btn-danger-hover: #e11d48;
+  --btn-danger-text: #ffffff;
+
+  --btn-success-bg: #22c55e;
+  --btn-success-hover: #16a34a;
+  --btn-success-text: #ffffff;
+
+  /* Accent Colors - Same */
+  --accent-purple: #a855f7;
+  --accent-pink: #ec4899;
+  --accent-cyan: #22d3ee;
+  --accent-orange: #f97316;
+
+  /* Input Colors */
+  --input-bg: #ffffff;
+  --input-border: #e2e8f0;
+  --input-focus: #6366f1;
+  --input-text: #0f172a;
+
+  /* Scrollbar Colors */
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-track-border: #e2e8f0;
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
+  --scrollbar-thumb-border: #f1f5f9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-primary);
+  background-image:
+    linear-gradient(var(--bg-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+  background-size: 40px 40px;
+  transition: background-color 0.3s ease;
+}
+
+/* Grid Layout Styles */
+.grid-layout {
+  position: relative;
+  transition: height 200ms ease;
+}
+
+.grid-item {
+  transition: all 200ms ease;
+  transition-property: left, top, width, height;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.grid-item.cssTransforms {
+  transition-property: transform, width, height;
+}
+
+.grid-item.resizing {
+  transition: none;
+  z-index: 1;
+}
+
+.grid-item.grid-placeholder {
+  background: repeating-linear-gradient(45deg, #3b82f6, #3b82f6 10px, #2563eb 10px, #2563eb 20px);
+  opacity: 0.4;
+  transition-duration: 100ms;
+  z-index: 2;
+  border-radius: 8px;
+  border: 2px dashed #3b82f6;
+}
+
+/* Scrollbar styling - minimal */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}

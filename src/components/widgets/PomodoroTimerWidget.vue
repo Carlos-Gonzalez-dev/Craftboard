@@ -1,0 +1,517 @@
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { Play, Pause, RotateCcw, Coffee } from 'lucide-vue-next'
+import type { Widget } from '../../types/widget'
+
+const props = defineProps<{
+  widget: Widget
+}>()
+
+const emit = defineEmits<{
+  'update:data': [data: any]
+}>()
+
+// Timer states
+type TimerType = 'work' | 'shortBreak' | 'longBreak'
+const timerType = ref<TimerType>('work')
+const isRunning = ref(false)
+const isPaused = ref(false)
+const timeRemaining = ref(25 * 60) // 25 minutes in seconds
+const completedPomodoros = ref(0)
+const intervalId = ref<number | null>(null)
+const startTimestamp = ref<number | null>(null) // Timestamp when timer started
+const pausedTimeRemaining = ref<number | null>(null) // Time remaining when paused
+const timeRemainingAtStart = ref<number | null>(null) // Time remaining when timer was started (for timestamp calculation)
+
+// Timer durations (in seconds)
+const WORK_DURATION = 25 * 60 // 25 minutes
+const SHORT_BREAK_DURATION = 5 * 60 // 5 minutes
+const LONG_BREAK_DURATION = 15 * 60 // 15 minutes
+const POMODOROS_UNTIL_LONG_BREAK = 4
+
+// Load saved state
+const loadState = () => {
+  if (props.widget.data) {
+    timerType.value = props.widget.data.timerType || 'work'
+    completedPomodoros.value = props.widget.data.completedPomodoros || 0
+    
+    // If timer was running, recalculate time based on timestamp
+    if (props.widget.data.isRunning && !props.widget.data.isPaused && props.widget.data.startTimestamp) {
+      const elapsed = Math.floor((Date.now() - props.widget.data.startTimestamp) / 1000)
+      const originalTime = props.widget.data.timeRemainingAtStart || getDefaultDuration(timerType.value)
+      const newTimeRemaining = Math.max(0, originalTime - elapsed)
+      
+      if (newTimeRemaining <= 0) {
+        // Timer completed while away - mark for completion after load
+        timeRemaining.value = 0
+        isRunning.value = false
+        isPaused.value = false
+        startTimestamp.value = null
+        timeRemainingAtStart.value = null
+        // Will be handled in onMounted
+      } else {
+        timeRemaining.value = newTimeRemaining
+        startTimestamp.value = props.widget.data.startTimestamp
+        timeRemainingAtStart.value = originalTime
+        isRunning.value = true
+        isPaused.value = false
+      }
+    } else if (props.widget.data.isPaused && props.widget.data.pausedTimeRemaining !== undefined) {
+      timeRemaining.value = props.widget.data.pausedTimeRemaining
+      pausedTimeRemaining.value = props.widget.data.pausedTimeRemaining
+      isPaused.value = true
+      isRunning.value = false
+    } else {
+      timeRemaining.value = props.widget.data.timeRemaining || getDefaultDuration(timerType.value)
+    }
+  } else {
+    timeRemaining.value = getDefaultDuration('work')
+  }
+}
+
+const getDefaultDuration = (type: TimerType): number => {
+  switch (type) {
+    case 'work':
+      return WORK_DURATION
+    case 'shortBreak':
+      return SHORT_BREAK_DURATION
+    case 'longBreak':
+      return LONG_BREAK_DURATION
+  }
+}
+
+const saveState = () => {
+  emit('update:data', {
+    timerType: timerType.value,
+    timeRemaining: timeRemaining.value,
+    completedPomodoros: completedPomodoros.value,
+    isRunning: isRunning.value,
+    isPaused: isPaused.value,
+    startTimestamp: startTimestamp.value,
+    timeRemainingAtStart: timeRemainingAtStart.value,
+    pausedTimeRemaining: pausedTimeRemaining.value,
+  })
+}
+
+// Format time display
+const formattedTime = computed(() => {
+  const minutes = Math.floor(timeRemaining.value / 60)
+  const seconds = timeRemaining.value % 60
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+})
+
+// Progress percentage
+const progress = computed(() => {
+  const defaultDuration = getDefaultDuration(timerType.value)
+  return ((defaultDuration - timeRemaining.value) / defaultDuration) * 100
+})
+
+// Timer label
+const timerLabel = computed(() => {
+  switch (timerType.value) {
+    case 'work':
+      return 'Focus Time'
+    case 'shortBreak':
+      return 'Short Break'
+    case 'longBreak':
+      return 'Long Break'
+  }
+})
+
+// Start timer
+const startTimer = () => {
+  if (timeRemaining.value <= 0) {
+    resetTimer()
+    return
+  }
+
+  isRunning.value = true
+  isPaused.value = false
+  
+  // If resuming from pause, use the paused time
+  if (pausedTimeRemaining.value !== null) {
+    timeRemaining.value = pausedTimeRemaining.value
+    pausedTimeRemaining.value = null
+  }
+  
+  // Save the time remaining at start for timestamp-based calculation
+  timeRemainingAtStart.value = timeRemaining.value
+  startTimestamp.value = Date.now()
+  saveState()
+
+  intervalId.value = window.setInterval(() => {
+    // Recalculate based on timestamp to handle tab switching
+    if (startTimestamp.value && timeRemainingAtStart.value !== null) {
+      const elapsed = Math.floor((Date.now() - startTimestamp.value) / 1000)
+      const newTimeRemaining = Math.max(0, timeRemainingAtStart.value - elapsed)
+      timeRemaining.value = newTimeRemaining
+      
+      if (newTimeRemaining <= 0) {
+        completeTimer()
+        return
+      }
+      
+      // Save state every 5 seconds to avoid too many updates
+      if (elapsed % 5 === 0) {
+        saveState()
+      }
+    } else {
+      // Fallback to decrementing if no timestamp (shouldn't happen)
+      if (timeRemaining.value > 0) {
+        timeRemaining.value--
+      } else {
+        completeTimer()
+      }
+    }
+  }, 1000)
+}
+
+// Pause timer
+const pauseTimer = () => {
+  isRunning.value = false
+  isPaused.value = true
+  pausedTimeRemaining.value = timeRemaining.value
+  startTimestamp.value = null
+  if (intervalId.value) {
+    clearInterval(intervalId.value)
+    intervalId.value = null
+  }
+  saveState()
+}
+
+// Reset timer
+const resetTimer = () => {
+  isRunning.value = false
+  isPaused.value = false
+  startTimestamp.value = null
+  timeRemainingAtStart.value = null
+  pausedTimeRemaining.value = null
+  if (intervalId.value) {
+    clearInterval(intervalId.value)
+    intervalId.value = null
+  }
+  timeRemaining.value = getDefaultDuration(timerType.value)
+  saveState()
+}
+
+// Complete timer
+const completeTimer = () => {
+  isRunning.value = false
+  isPaused.value = false
+  startTimestamp.value = null
+  timeRemainingAtStart.value = null
+  pausedTimeRemaining.value = null
+  if (intervalId.value) {
+    clearInterval(intervalId.value)
+    intervalId.value = null
+  }
+
+  // Play notification sound
+  playNotificationSound()
+
+  // Show browser notification if permission granted
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('Pomodoro Timer', {
+      body: timerType.value === 'work' ? 'Focus session complete! Time for a break.' : 'Break complete! Ready to focus?',
+      icon: '/favicon.ico',
+    })
+  }
+
+  // Update completed pomodoros and switch timer type
+  if (timerType.value === 'work') {
+    completedPomodoros.value++
+    // Switch to break (long break every 4 pomodoros)
+    if (completedPomodoros.value % POMODOROS_UNTIL_LONG_BREAK === 0) {
+      timerType.value = 'longBreak'
+      timeRemaining.value = LONG_BREAK_DURATION
+    } else {
+      timerType.value = 'shortBreak'
+      timeRemaining.value = SHORT_BREAK_DURATION
+    }
+  } else {
+    // Break complete, switch to work
+    timerType.value = 'work'
+    timeRemaining.value = WORK_DURATION
+  }
+
+  saveState()
+}
+
+// Play notification sound
+const playNotificationSound = () => {
+  try {
+    // Create audio context and play a beep
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+
+    oscillator.frequency.value = 800
+    oscillator.type = 'sine'
+
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
+
+    oscillator.start(audioContext.currentTime)
+    oscillator.stop(audioContext.currentTime + 0.5)
+  } catch (e) {
+    console.warn('Could not play notification sound:', e)
+  }
+}
+
+// Request notification permission
+const requestNotificationPermission = async () => {
+  if ('Notification' in window && Notification.permission === 'default') {
+    await Notification.requestPermission()
+  }
+}
+
+// Switch timer type manually
+const switchTimerType = (type: TimerType) => {
+  if (isRunning.value) {
+    pauseTimer()
+  }
+  timerType.value = type
+  timeRemaining.value = getDefaultDuration(type)
+  saveState()
+}
+
+onMounted(() => {
+  loadState()
+  requestNotificationPermission()
+
+  // Check if timer completed while away (timeRemaining is 0 but was running)
+  if (timeRemaining.value === 0 && props.widget.data?.isRunning && !props.widget.data?.isPaused) {
+    // Timer completed while tab was away
+    completeTimer()
+    return
+  }
+
+  // Restore running state if it was running
+  if (isRunning.value && !isPaused.value && startTimestamp.value && timeRemainingAtStart.value !== null) {
+    // Timer was running, recalculate and continue
+    startTimer()
+  }
+})
+
+onUnmounted(() => {
+  if (intervalId.value) {
+    clearInterval(intervalId.value)
+  }
+})
+</script>
+
+<template>
+  <div class="pomodoro-widget">
+    <div class="pomodoro-header">
+      <div class="timer-label">{{ timerLabel }}</div>
+      <div class="completed-count">
+        <Coffee :size="14" />
+        <span>{{ completedPomodoros }}</span>
+      </div>
+    </div>
+
+    <div class="timer-display">
+      <div class="time">{{ formattedTime }}</div>
+      <div class="progress-bar-container">
+        <div class="progress-bar" :style="{ width: `${progress}%` }"></div>
+      </div>
+    </div>
+
+    <div class="timer-controls">
+      <button v-if="!isRunning" @click="startTimer" class="control-button start-button" title="Start">
+        <Play :size="18" />
+      </button>
+      <button v-else @click="pauseTimer" class="control-button pause-button" title="Pause">
+        <Pause :size="18" />
+      </button>
+      <button @click="resetTimer" class="control-button reset-button" title="Reset">
+        <RotateCcw :size="18" />
+      </button>
+    </div>
+
+    <div class="timer-type-selector">
+      <button
+        @click="switchTimerType('work')"
+        :class="['type-button', { active: timerType === 'work' }]"
+        title="Focus Time (25 min)"
+      >
+        Work
+      </button>
+      <button
+        @click="switchTimerType('shortBreak')"
+        :class="['type-button', { active: timerType === 'shortBreak' }]"
+        title="Short Break (5 min)"
+      >
+        Break
+      </button>
+      <button
+        @click="switchTimerType('longBreak')"
+        :class="['type-button', { active: timerType === 'longBreak' }]"
+        title="Long Break (15 min)"
+      >
+        Long
+      </button>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.pomodoro-widget {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  padding: 8px;
+}
+
+.pomodoro-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0 8px;
+}
+
+.timer-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.completed-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.timer-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.time {
+  font-size: 48px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+  letter-spacing: 2px;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%);
+  border-radius: 3px;
+  transition: width 1s linear;
+}
+
+.timer-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.control-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: white;
+}
+
+.start-button {
+  background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
+  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
+}
+
+.start-button:hover {
+  background: linear-gradient(135deg, #16a34a 0%, #166534 100%);
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+}
+
+.pause-button {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.pause-button:hover {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+.reset-button {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+.reset-button:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  transform: scale(1.05);
+}
+
+.timer-type-selector {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 0 8px;
+}
+
+.type-button {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.type-button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.type-button.active {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: white;
+  border-color: transparent;
+}
+
+.type-button.active:hover {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+}
+</style>
+

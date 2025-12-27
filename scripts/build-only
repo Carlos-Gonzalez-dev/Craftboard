@@ -1,0 +1,2 @@
+# Ignore type errors
+npm run build-only
