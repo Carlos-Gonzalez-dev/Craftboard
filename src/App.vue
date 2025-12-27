@@ -23,6 +23,7 @@ import {
   Calendar,
   Move,
   Menu,
+  HelpCircle,
 } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useWidgetView } from './composables/useWidgetView'
@@ -449,6 +450,15 @@ onUnmounted(() => {
           <div class="mobile-footer-right">
             <span class="mobile-footer-about">Carlos González, 2025</span>
             <span class="mobile-footer-contact">craft-dashboard@dende.gal</span>
+            <a
+              href="https://espazo.dende.gal/craftboard-documentation"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="mobile-footer-help"
+              title="Documentation"
+            >
+              <HelpCircle :size="14" />
+            </a>
           </div>
         </div>
       </div>
@@ -557,6 +567,15 @@ onUnmounted(() => {
       <div class="footer-right">
         <span class="footer-about">Carlos González, 2025</span>
         <span class="footer-contact">craft-dashboard@dende.gal</span>
+        <a
+          href="https://espazo.dende.gal/craftboard-documentation"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="footer-help"
+          title="Documentation"
+        >
+          <HelpCircle :size="14" />
+        </a>
       </div>
     </footer>
 
@@ -760,6 +779,19 @@ body.study-mode .navbar {
 
 .footer-contact {
   color: var(--text-tertiary);
+}
+
+.footer-help {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+  margin-left: 8px;
+}
+
+.footer-help:hover {
+  color: var(--text-primary);
 }
 
 .footer-changelog-date {
@@ -1271,6 +1303,19 @@ body.study-mode .navbar {
 
 .mobile-footer-contact {
   color: var(--text-tertiary);
+}
+
+.mobile-footer-help {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+  margin-left: 8px;
+}
+
+.mobile-footer-help:hover {
+  color: var(--text-primary);
 }
 
 .mobile-footer-changelog-date {
