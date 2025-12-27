@@ -1,7 +1,7 @@
 # Craftboard
 
 This is VueJs based Craft.do integration.
-See it live at [craftboard.dende.gal](craftboard.dende.gal)
+See it live at [craftboard.dende.gal](https://craftboard.dende.gal)
 
 <br />
 
