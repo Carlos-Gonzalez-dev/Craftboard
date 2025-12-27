@@ -13,6 +13,7 @@ export const changelog: ChangelogEntry[] = [
       'Improved add widget list now they are grouped by category',
       'Removed unnecesary sections on Stats widgets',
       'Fix BookmarkWidget it now uses the new CollectionID stored in settings',
+      'Update contact e-mail',
     ],
   },
   {
