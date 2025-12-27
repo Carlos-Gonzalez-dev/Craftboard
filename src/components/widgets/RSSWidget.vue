@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { Settings, ExternalLink, Search, Loader, RefreshCw, Rss } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
-import { getApiUrl, getApiToken, getCollectionItems, getCacheExpiryMs } from '../../utils/craftApi'
+import { getApiUrl, getCollectionItems, getCacheExpiryMs } from '../../utils/craftApi'
 import { fetchRSSFeed, type RSSFeed } from '../../utils/rssParser'
 import { getFaviconUrl, getDomain } from '../../utils/favicon'
 import ProgressIndicator from '../ProgressIndicator.vue'
@@ -20,10 +20,8 @@ const emit = defineEmits<{
 const apiBaseUrl = ref('')
 const rssCollectionId = ref<string | null>(null)
 
-// Cache keys (same as RSSView)
+// Cache keys
 const CACHE_PREFIX = 'rss-cache-'
-const COLLECTION_CACHE_PREFIX = 'rss-collection-'
-const COLLECTION_CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 // State
 const isConfiguring = ref(!props.widget.data?.rssItemId)
@@ -45,96 +43,24 @@ interface RSSCollectionItem {
   tags?: string[]
 }
 
-const getHeaders = () => {
-  const token = getApiToken()
-  return {
-    Authorization: token ? `Bearer ${token}` : '',
-    'Content-Type': 'application/json',
-  }
-}
-
-const getDocumentId = () => {
-  // Use collections document ID only
-  return localStorage.getItem('collections-document-id')
-}
-
-const getCollectionCacheKey = () => {
-  const docId = getDocumentId()
-  return docId ? `${COLLECTION_CACHE_PREFIX}${docId}` : null
-}
-
-const getCachedCollectionId = () => {
-  const cacheKey = getCollectionCacheKey()
-  if (!cacheKey) return null
-
-  try {
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { collectionId, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-
-    if (now - timestamp < COLLECTION_CACHE_EXPIRY_MS) {
-      return collectionId
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch (error) {
-    console.error('Error reading collection cache:', error)
-    return null
-  }
-}
-
 const discoverCollection = async () => {
-  const docId = getDocumentId()
-  if (!apiBaseUrl.value || !docId) return
+  if (!apiBaseUrl.value) return
 
-  // Check cache first
-  const cachedCollectionId = getCachedCollectionId()
-  if (cachedCollectionId) {
-    rssCollectionId.value = cachedCollectionId
+  // Load collection ID from settings
+  const rssId = localStorage.getItem('collection-id-rss')
+
+  if (!rssId) {
+    error.value =
+      'RSS collection ID not configured. Please configure it in Settings > API > Collection IDs.'
     return
   }
 
-  try {
-    const collectionsUrl = `${apiBaseUrl.value}/collections?documentIds=${docId}`
-    const response = await fetch(collectionsUrl, {
-      method: 'GET',
-      headers: getHeaders(),
-    })
-
-    if (!response.ok) {
-      throw new Error('Unable to fetch collections')
-    }
-
-    const data = await response.json()
-    const collections = data.items || []
-
-    const rssCollection = collections.find((col: any) => col.name.toLowerCase() === 'rss')
-
-    if (rssCollection) {
-      rssCollectionId.value = rssCollection.id
-      const cacheKey = getCollectionCacheKey()
-      if (cacheKey) {
-        localStorage.setItem(
-          cacheKey,
-          JSON.stringify({
-            collectionId: rssCollection.id,
-            timestamp: Date.now(),
-          })
-        )
-      }
-    }
-  } catch (err) {
-    console.error('Error discovering collection:', err)
-    error.value = 'Failed to discover RSS collection'
-  }
+  rssCollectionId.value = rssId
 }
 
 const getCacheKey = () => {
-  const docId = getDocumentId()
-  return docId ? `${CACHE_PREFIX}${docId}` : null
+  if (!rssCollectionId.value) return null
+  return `${CACHE_PREFIX}${rssCollectionId.value}`
 }
 
 const getCachedData = () => {
@@ -393,12 +319,6 @@ const initialize = async () => {
     return
   }
 
-  const docId = getDocumentId()
-  if (!docId) {
-    error.value = 'RSS Document ID not configured'
-    return
-  }
-
   await discoverCollection()
   if (rssCollectionId.value) {
     await fetchRSSItems()
@@ -409,8 +329,6 @@ const initialize = async () => {
       // Use cached items even if collection discovery failed
       rssItems.value = cached.items || []
       loadSelectedRSSItem()
-    } else {
-      error.value = 'RSS collection not found. Please check Settings and ensure you have an RSS collection.'
     }
   }
 }
