@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { Search, Loader } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
-import { getApiUrl, getApiToken, getCollectionItems } from '../../utils/craftApi'
+import { getApiUrl, getCollectionItems } from '../../utils/craftApi'
 import { getFaviconUrl, getDomain } from '../../utils/favicon'
 import ProgressIndicator from '../ProgressIndicator.vue'
 
@@ -19,11 +19,9 @@ const emit = defineEmits<{
 const apiBaseUrl = ref('')
 const bookmarksCollectionId = ref<string | null>(null)
 
-// Cache keys (same as BookmarksView)
+// Cache keys
 const CACHE_PREFIX = 'bookmarks-cache-'
 const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
-const COLLECTION_CACHE_PREFIX = 'bookmarks-collection-'
-const COLLECTION_CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 // State
 const isConfiguring = ref(!props.widget.data?.bookmarkId)
@@ -43,98 +41,24 @@ interface BookmarkItem {
   tags?: string[]
 }
 
-const getHeaders = () => {
-  const token = getApiToken()
-  return {
-    Authorization: token ? `Bearer ${token}` : '',
-    'Content-Type': 'application/json',
-  }
-}
-
-const getDocumentId = () => {
-  // Use collections document ID only
-  return localStorage.getItem('collections-document-id')
-}
-
-const getCollectionCacheKey = () => {
-  const docId = getDocumentId()
-  return docId ? `${COLLECTION_CACHE_PREFIX}${docId}` : null
-}
-
-const getCachedCollectionId = () => {
-  const cacheKey = getCollectionCacheKey()
-  if (!cacheKey) return null
-
-  try {
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { collectionId, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-
-    if (now - timestamp < COLLECTION_CACHE_EXPIRY_MS) {
-      return collectionId
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch (error) {
-    console.error('Error reading collection cache:', error)
-    return null
-  }
-}
-
 const discoverCollection = async () => {
-  const docId = getDocumentId()
-  if (!apiBaseUrl.value || !docId) return
+  if (!apiBaseUrl.value) return
 
-  // Check cache first
-  const cachedCollectionId = getCachedCollectionId()
-  if (cachedCollectionId) {
-    bookmarksCollectionId.value = cachedCollectionId
+  // Load collection ID from settings
+  const bookmarksId = localStorage.getItem('collection-id-bookmarks')
+
+  if (!bookmarksId) {
+    error.value =
+      'Bookmarks collection ID not configured. Please configure it in Settings > API > Collection IDs.'
     return
   }
 
-  try {
-    const collectionsUrl = `${apiBaseUrl.value}/collections?documentIds=${docId}`
-    const response = await fetch(collectionsUrl, {
-      method: 'GET',
-      headers: getHeaders(),
-    })
-
-    if (!response.ok) {
-      throw new Error('Unable to fetch collections')
-    }
-
-    const data = await response.json()
-    const collections = data.items || []
-
-    const bookmarksCollection = collections.find(
-      (col: any) => col.name.toLowerCase() === 'bookmarks'
-    )
-
-    if (bookmarksCollection) {
-      bookmarksCollectionId.value = bookmarksCollection.id
-      const cacheKey = getCollectionCacheKey()
-      if (cacheKey) {
-        localStorage.setItem(
-          cacheKey,
-          JSON.stringify({
-            collectionId: bookmarksCollection.id,
-            timestamp: Date.now(),
-          })
-        )
-      }
-    }
-  } catch (err) {
-    console.error('Error discovering collection:', err)
-    error.value = 'Failed to discover Bookmarks collection'
-  }
+  bookmarksCollectionId.value = bookmarksId
 }
 
 const getCacheKey = () => {
-  const docId = getDocumentId()
-  return docId ? `${CACHE_PREFIX}${docId}` : null
+  if (!bookmarksCollectionId.value) return null
+  return `${CACHE_PREFIX}${bookmarksCollectionId.value}`
 }
 
 const getCachedData = () => {
@@ -224,7 +148,7 @@ const fetchBookmarks = async () => {
         JSON.stringify({
           data: validItems,
           timestamp: Date.now(),
-        })
+        }),
       )
     }
 
@@ -286,12 +210,6 @@ const initialize = async () => {
     return
   }
 
-  const docId = getDocumentId()
-  if (!docId) {
-    error.value = 'Bookmarks Document ID not configured'
-    return
-  }
-
   await discoverCollection()
   if (bookmarksCollectionId.value) {
     await fetchBookmarks()
@@ -306,7 +224,7 @@ watch(
   () => props.widget.data?.bookmarkId,
   () => {
     loadSelectedBookmark()
-  }
+  },
 )
 </script>
 
@@ -354,7 +272,11 @@ watch(
             :src="getFaviconUrl(bookmark.url)"
             :alt="getDomain(bookmark.url)"
             class="bookmark-favicon"
-            @error="(e) => { (e.target as HTMLImageElement).style.display = 'none' }"
+            @error="
+              (e) => {
+                ;(e.target as HTMLImageElement).style.display = 'none'
+              }
+            "
           />
           <div class="bookmark-info">
             <div class="bookmark-title">{{ bookmark.title || getDomain(bookmark.url) }}</div>
@@ -378,7 +300,11 @@ watch(
           :src="getFaviconUrl(selectedBookmark.url)"
           :alt="getDomain(selectedBookmark.url)"
           class="bookmark-favicon-large"
-          @error="(e) => { (e.target as HTMLImageElement).style.display = 'none' }"
+          @error="
+            (e) => {
+              ;(e.target as HTMLImageElement).style.display = 'none'
+            }
+          "
         />
         <div class="bookmark-content">
           <div class="bookmark-title-large">
@@ -625,7 +551,4 @@ watch(
   font-size: 10px;
   font-weight: 600;
 }
-
 </style>
-
-

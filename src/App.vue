@@ -409,7 +409,7 @@ onUnmounted(() => {
     >
       <div class="mobile-sidebar-header">
         <div class="mobile-sidebar-brand">
-          <img src="/favicon.ico" alt="Craftboard" class="mobile-sidebar-brand-icon" />
+          <img src="/favicon.svg" alt="Craftboard" class="mobile-sidebar-brand-icon" />
           <span>{{ dashboardTitle }}</span>
         </div>
         <button @click="closeMobileSidebar" class="mobile-sidebar-close">
@@ -442,7 +442,7 @@ onUnmounted(() => {
         <!-- App Footer in Sidebar -->
         <div class="mobile-app-footer">
           <div class="mobile-footer-left">
-            <img src="/favicon.ico" alt="Craftboard" class="mobile-footer-icon" />
+            <img src="/favicon.svg" alt="Craftboard" class="mobile-footer-icon" />
             <span>{{ dashboardTitle }}</span>
             <span v-if="latestChangelogDate" class="mobile-footer-version">{{ latestChangelogDate }}</span>
           </div>
@@ -550,7 +550,7 @@ onUnmounted(() => {
 
     <footer class="app-footer">
       <div class="footer-left">
-        <img src="/favicon.ico" alt="Craftboard" class="footer-icon" />
+        <img src="/favicon.svg" alt="Craftboard" class="footer-icon" />
         <span>{{ dashboardTitle }}</span>
         <span v-if="latestChangelogDate" class="footer-version">{{ latestChangelogDate }}</span>
       </div>
@@ -734,6 +734,8 @@ body.study-mode .navbar {
   height: 14px;
   object-fit: contain;
   flex-shrink: 0;
+  background: transparent;
+  border: none;
 }
 
 .footer-version {
@@ -997,6 +999,8 @@ body.study-mode .navbar {
   height: 18px;
   object-fit: contain;
   flex-shrink: 0;
+  background: transparent;
+  border: none;
 }
 
 .mobile-sidebar-close {
@@ -1241,6 +1245,8 @@ body.study-mode .navbar {
   height: 14px;
   object-fit: contain;
   flex-shrink: 0;
+  background: transparent;
+  border: none;
 }
 
 .mobile-footer-version {

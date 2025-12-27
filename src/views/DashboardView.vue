@@ -115,12 +115,11 @@ const widgetCategories: WidgetCategory[] = [
         name: 'Bookmark',
         description: 'Display a single bookmark from your Bookmarks collection',
         icon: Bookmark,
-        condition: () => hasBookmarksConfig.value,
       },
       {
         type: 'collection',
-        name: 'Craft Collection',
-        description: 'Display data from your Craft collections',
+        name: 'Collection',
+        description: 'Display data from your Craft collections in table or gallery view',
         icon: Library,
       },
       {
@@ -136,16 +135,16 @@ const widgetCategories: WidgetCategory[] = [
         icon: Network,
       },
       {
-        type: 'pin-block',
-        name: 'Pin Block',
-        description: 'Pin Craft blocks',
-        icon: LinkIcon,
-      },
-      {
         type: 'document-tasks',
-        name: 'PIN Document',
+        name: 'Document',
         description: 'Display tasks from a specific Craft document',
         icon: CheckSquare,
+      },
+      {
+        type: 'pin-block',
+        name: 'Block',
+        description: 'Go directly to a Craft Block',
+        icon: LinkIcon,
       },
       {
         type: 'quote',
@@ -158,7 +157,6 @@ const widgetCategories: WidgetCategory[] = [
         name: 'RSS Feed',
         description: 'Display a single RSS feed from your RSS collection',
         icon: Rss,
-        condition: () => hasRSSConfig.value,
       },
     ],
   },
@@ -219,9 +217,16 @@ const widgetCategories: WidgetCategory[] = [
 // Selected category for tabs
 const selectedCategory = ref<string>('')
 
-// Computed property for sorted categories
+// Computed property for sorted categories with sorted widgets
 const sortedCategories = computed(() => {
-  return [...widgetCategories].sort((a, b) => a.name.localeCompare(b.name))
+  return [...widgetCategories]
+    .map((category) => ({
+      ...category,
+      widgets: [...category.widgets]
+        .filter((widget) => !widget.condition || widget.condition())
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 })
 
 // Initialize selected category when modal opens
@@ -231,11 +236,11 @@ watch(showAddModal, (isOpen) => {
   }
 })
 
-// Get widgets for selected category
+// Get widgets for selected category (already sorted in sortedCategories)
 const widgetsForCategory = computed(() => {
-  const category = widgetCategories.find((c) => c.name === selectedCategory.value)
+  const category = sortedCategories.value.find((c) => c.name === selectedCategory.value)
   if (!category) return []
-  return category.widgets.filter((widget) => !widget.condition || widget.condition())
+  return category.widgets
 })
 
 const defaultWidgets: Widget[] = [
@@ -607,11 +612,11 @@ const addWidget = (
           : type === 'stopwatch'
             ? 'Stopwatch'
             : type === 'collection'
-              ? 'Craft Collection'
+              ? 'Collection'
               : type === 'daily-note'
                 ? 'Daily Note'
                 : type === 'pin-block'
-                    ? 'Pin Block'
+                    ? 'Block'
                     : type === 'pin-url'
                       ? 'Pin URL'
                       : type === 'iframe'
@@ -633,7 +638,7 @@ const addWidget = (
                                 : type === 'pomodoro'
                                   ? 'Pomodoro Timer'
                                   : type === 'document-tasks'
-                                    ? 'PIN Document'
+                                    ? 'Document'
                                     : 'Checklist',
     color: defaultColors[colorIndex],
   }
