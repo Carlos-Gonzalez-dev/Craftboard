@@ -336,8 +336,8 @@ const clearLocalStorage = () => {
 
 const saveSettings = async (skipAutodiscovery = false) => {
   localStorage.setItem('craft-api-url', apiUrl.value)
-  localStorage.setItem('craft-api-key', apiKey.value)
-  localStorage.setItem('craft-api-token', apiKey.value) // Also save as token for craftApi
+  localStorage.setItem('craft-api-key', apiKey.value || '')
+  localStorage.setItem('craft-api-token', apiKey.value || '') // Also save as token for craftApi
 
   // Save collection IDs
   requiredCollections.forEach((col) => {

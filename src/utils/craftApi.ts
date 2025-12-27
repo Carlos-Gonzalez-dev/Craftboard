@@ -58,13 +58,13 @@ export const getApiToken = () => {
 
 const getHeaders = () => {
   const token = getApiToken()
-  if (!token) {
-    throw new Error('Craft API token not configured')
-  }
-  return {
-    Authorization: `Bearer ${token}`,
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  return headers
 }
 
 export const getApiUrl = () => {
@@ -937,3 +937,4 @@ export const renderPropertyValue = (value: any, propertyType: string): string =>
       return String(value)
   }
 }
+
