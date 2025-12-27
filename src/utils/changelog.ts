@@ -21,23 +21,11 @@ export const changelog: ChangelogEntry[] = [
       'Added autodiscovery of collections to avoid searching the ids manually',
       'Added progressbar indicator on all widgets',
       'Added open links in Craft Web (Beta) untested, please report any issues',
-    ],
-  },
-  {
-    date: '2025-12-26',
-    changes: ['Added progress indicator on all views'],
-  },
-  {
-    date: '2025-12-26',
-    changes: [
+      'Added progress indicator on all views',
       'Changed cache expiry from hours to minutes',
       'Reduce number of API calls on some views',
       'Fixed RSS proxy request with a localhost URL on production',
     ],
-  },
-  {
-    date: '2025-12-25',
-    changes: ['Fixed several bugs'],
   },
   {
     date: '2025-12-25',
