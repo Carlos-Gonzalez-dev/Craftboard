@@ -30,6 +30,9 @@ const collections = ref<Collection[]>([])
 const isLoadingCollections = ref(false)
 const collectionsError = ref<string | null>(null)
 
+// Export/Import state
+const importFileInput = ref<HTMLInputElement | null>(null)
+
 // Required collections for the app
 const requiredCollections = [
   { key: 'decks', label: 'Craftboard Decks', name: 'Craftboard Decks' },
@@ -442,6 +445,68 @@ if (savedCalendarUrls) {
   calendarUrls.value = ['']
 }
 cacheExpiryMinutes.value = getCacheExpiryMinutes()
+
+// Export/Import functions
+function getExportData() {
+  const data: Record<string, any> = {}
+  // Export all localStorage
+  for (const key in localStorage) {
+    if (localStorage.hasOwnProperty(key)) {
+      const val = localStorage.getItem(key)
+      if (val !== null) data[key] = val
+    }
+  }
+  return data
+}
+
+function exportData() {
+  const data = getExportData()
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  const date = new Date().toISOString().replace(/[:.]/g, '-')
+  const name = 'craftboard-export-' + date + '.json'
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  setTimeout(() => {
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, 100)
+}
+
+function triggerImportFile() {
+  if (importFileInput.value) {
+    importFileInput.value.value = ''
+    importFileInput.value.click()
+  }
+}
+
+function importDataFromFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.files || !input.files[0]) return
+  const file = input.files[0]
+  const reader = new FileReader()
+  reader.onload = function (e) {
+    try {
+      if (!confirm('Importing will erase ALL current local data and reload the page. Continue?'))
+        return
+      localStorage.clear()
+      const data = JSON.parse(e.target?.result as string)
+      for (const key in data) {
+        if (data.hasOwnProperty(key)) {
+          localStorage.setItem(key, data[key])
+        }
+      }
+      alert('Import successful! The page will now reload.')
+      window.location.reload()
+    } catch (err) {
+      alert('Failed to import data: ' + (err instanceof Error ? err.message : err))
+    }
+  }
+  reader.readAsText(file)
+}
 </script>
 
 <template>
@@ -715,6 +780,34 @@ cacheExpiryMinutes.value = getCacheExpiryMinutes()
               <div class="storage-bar">
                 <div class="storage-bar-fill" :style="{ width: storagePercentage + '%' }"></div>
               </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 24px">
+              <label>Export/Import Data</label>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap">
+                <button @click="exportData" class="action-button">
+                  <Database :size="16" />
+                  Export All Data
+                </button>
+                <input
+                  ref="importFileInput"
+                  type="file"
+                  accept="application/json"
+                  style="display: none"
+                  @change="importDataFromFile"
+                />
+                <button @click="triggerImportFile" class="action-button">
+                  <Database :size="16" />
+                  Import Data
+                </button>
+              </div>
+              <p class="field-hint">
+                <strong>Export:</strong> Download a complete backup of all your data (widgets, configuration, settings, and cache).<br />
+                <strong>Import:</strong> <span style="color: #b91c1c"
+                  >Warning: This will erase all current local data before importing.</span
+                >
+                The page will reload after a successful import.
+              </p>
             </div>
 
             <button @click="clearLocalStorage" class="action-button danger-button">

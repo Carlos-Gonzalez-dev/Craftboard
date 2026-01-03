@@ -5,6 +5,10 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: '2026-01-04',
+    changes: ['Added import / export settings feature'],
+  },
+  {
     date: '2025-12-27',
     changes: [
       'Added specific navigation for mobile devices',
