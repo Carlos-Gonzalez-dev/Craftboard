@@ -114,11 +114,11 @@ const selectedCategoryItems = computed(() => {
     })
   }
 
-  // Filter by selected tags
+  // Filter by selected tags (AND logic - must have ALL selected tags)
   if (selectedTags.value.size > 0) {
     items = items.filter((item) => {
       if (!item.tags || item.tags.length === 0) return false
-      return Array.from(selectedTags.value).some((tag) => item.tags.includes(tag))
+      return Array.from(selectedTags.value).every((tag) => item.tags.includes(tag))
     })
   }
 
@@ -588,15 +588,6 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
                     </button>
                   </div>
                 </div>
-              </div>
-
-              <!-- Results count -->
-              <div v-if="searchQuery || selectedTags.size > 0" class="results-info">
-                <span>
-                  Showing {{ selectedCategoryItems.length }} bookmark{{
-                    selectedCategoryItems.length !== 1 ? 's' : ''
-                  }}
-                </span>
               </div>
 
               <div v-if="selectedCategoryItems.length === 0" class="no-results">
