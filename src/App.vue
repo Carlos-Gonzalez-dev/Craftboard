@@ -128,6 +128,10 @@ const handleRefresh = () => {
   }
 }
 
+const reloadApp = () => {
+  window.location.reload()
+}
+
 const dashboardTitle = ref('Craftboard')
 const showFlashcardsTab = ref(true)
 const showMusicTab = ref(true)
@@ -460,6 +464,10 @@ onUnmounted(() => {
         </nav>
       </div>
       <div class="mobile-sidebar-footer">
+        <button @click="reloadApp" class="mobile-nav-link refresh-button">
+          <RefreshCw :size="18" />
+          <span>Reload</span>
+        </button>
         <button @click="toggleTheme" class="mobile-nav-link theme-toggle">
           <component :is="currentTheme === 'dark' ? Sun : Moon" :size="18" />
           <span>{{ currentTheme === 'light' ? 'Light' : 'Dark' }}</span>

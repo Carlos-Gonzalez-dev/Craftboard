@@ -6,7 +6,7 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: '2026-01-10v2',
-    changes: [],
+    changes: ['On mobile added a reload app button on the sidebar footer'],
   },
   {
     date: '2026-01-04',
