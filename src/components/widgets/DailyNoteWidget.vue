@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { marked } from 'marked'
-import { ChevronLeft, ChevronRight, Link as LinkIcon } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, Link as LinkIcon, RefreshCw } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
 import {
@@ -78,13 +78,13 @@ const loadDailyNotes = async () => {
   try {
     const result = await fetchDocuments({ location: 'daily_notes', fetchMetadata: true })
     const notesMap = new Map<string, CraftDocument>()
-    
+
     result.items.forEach((doc) => {
       if (doc.dailyNoteDate) {
         notesMap.set(doc.dailyNoteDate, doc)
       }
     })
-    
+
     dailyNotes.value = notesMap
   } catch (error) {
     console.error('Error loading daily notes:', error)
@@ -159,6 +159,11 @@ const goToToday = () => {
   currentDate.value = new Date()
 }
 
+// Refresh current daily note
+const refresh = async () => {
+  await loadDailyNote()
+}
+
 // Watch for date changes and reload (watch the formatted string to avoid duplicate triggers)
 watch(
   currentDateStr,
@@ -172,14 +177,14 @@ watch(
 onMounted(async () => {
   // Load daily notes first
   await loadDailyNotes()
-  
+
   if (props.widget.data?.currentDate) {
     const savedDate = new Date(props.widget.data.currentDate)
     if (!isNaN(savedDate.getTime())) {
       // Check if saved date is different from current date
       const currentDateStr = formatDate(currentDate.value)
       const savedDateStr = formatDate(savedDate)
-      
+
       if (currentDateStr !== savedDateStr) {
         currentDate.value = savedDate
         // Watch will trigger loadDailyNote() when currentDate changes
@@ -221,7 +226,7 @@ const hasDailyNoteLink = computed(() => {
 
 const openInCraft = async () => {
   const dailyNote = getDailyNoteForCurrentDate.value
-  
+
   // Only open if daily note exists and has a clickableLink
   if (!dailyNote || !dailyNote.clickableLink) {
     return
@@ -285,15 +290,18 @@ const openInCraft = async () => {
     <div v-else class="markdown-content" v-html="html" />
 
     <!-- Footer with link button -->
-    <div v-if="hasDailyNoteLink && !isLoading && !error && !isCompactView" class="widget-footer">
-      <a
-        href="#"
-        @click.prevent="openInCraft"
+    <div v-if="!isCompactView" class="widget-footer">
+      <button
+        v-if="hasDailyNoteLink"
+        @click="openInCraft"
         class="footer-button"
         :title="getCraftLinkPreference() === 'web' ? 'Open in Craft Web' : 'Open in Craft App'"
       >
-        <LinkIcon :size="16" />
-      </a>
+        <LinkIcon :size="14" />
+      </button>
+      <button @click="refresh" class="footer-button" title="Refresh" :disabled="isLoading">
+        <RefreshCw :size="14" :class="{ spinning: isLoading }" />
+      </button>
     </div>
   </div>
 </template>
@@ -306,6 +314,7 @@ const openInCraft = async () => {
   gap: 10px;
   position: relative;
   overflow: hidden;
+  padding-bottom: 38px; /* Space for footer buttons */
 }
 
 .navigation-controls {
@@ -520,5 +529,9 @@ const openInCraft = async () => {
 .footer-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
 }
 </style>

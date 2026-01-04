@@ -10,6 +10,7 @@ export const changelog: ChangelogEntry[] = [
       'On mobile added a reload app button on the sidebar footer',
       'Added button to reload app if a new version is released',
       'Deleted PIN Widget. It was not being used',
+      'Minor adjustements to ClockWidget',
     ],
   },
   {
