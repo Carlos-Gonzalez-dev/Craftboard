@@ -5,6 +5,10 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: '2026-01-10v2',
+    changes: [],
+  },
+  {
     date: '2026-01-04',
     changes: [
       'Added import / export settings feature',
@@ -13,6 +17,7 @@ export const changelog: ChangelogEntry[] = [
       'Add active tasks counter on the tasks tab',
       'Improve bookmark filtering',
       'Bookmark tags now have unique colors',
+      'Improve favicons',
     ],
   },
   {

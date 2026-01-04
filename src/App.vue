@@ -607,7 +607,7 @@ onUnmounted(() => {
         <span v-if="latestChangelogDate" class="footer-version">{{ latestChangelogDate }}</span>
       </div>
       <div class="footer-right">
-        <span class="footer-about">Carlos González, 2025</span>
+        <span class="footer-about">Carlos González, 2025 - 2026</span>
         <span class="footer-contact">craftboard@dende.gal</span>
         <a
           href="https://espazo.dende.gal/craftboard-documentation"
