@@ -599,6 +599,16 @@ const flipCard = () => {
 }
 
 const markAnswer = (correct: boolean) => {
+  // Prevent multiple clicks while transitioning
+  if (isTransitioning.value) {
+    return
+  }
+
+  // Validate we're still within bounds
+  if (currentCardIndex.value >= currentDeckFlashcards.value.length) {
+    return
+  }
+
   results.value.total++
   if (correct) {
     results.value.correct++
