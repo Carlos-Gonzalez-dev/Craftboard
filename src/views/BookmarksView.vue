@@ -132,6 +132,23 @@ const initializeSelectedCategory = () => {
   }
 }
 
+// Generate a unique color for a tag based on its text
+const getTagColor = (tag: string) => {
+  // Simple hash function to get a consistent number from string
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash)
+  }
+
+  // Convert hash to hue (0-360)
+  const hue = Math.abs(hash % 360)
+
+  // Return CSS custom properties that work with both themes
+  return {
+    '--tag-hue': hue,
+  }
+}
+
 const getHeaders = () => {
   const token = getApiToken()
   return {
@@ -583,6 +600,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
                       :key="tag"
                       @click="toggleTag(tag)"
                       :class="['tag-filter-button', { active: selectedTags.has(tag) }]"
+                      :style="getTagColor(tag)"
                     >
                       {{ tag }}
                     </button>
@@ -618,7 +636,13 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
                     <h3 class="bookmark-title">{{ bookmark.title || getDomain(bookmark.url) }}</h3>
                     <p class="bookmark-url">{{ getDomain(bookmark.url) }}</p>
                     <div v-if="bookmark.tags && bookmark.tags.length > 0" class="bookmark-tags">
-                      <span v-for="tag in bookmark.tags" :key="tag" class="tag">{{ tag }}</span>
+                      <span
+                        v-for="tag in bookmark.tags"
+                        :key="tag"
+                        class="tag"
+                        :style="getTagColor(tag)"
+                        >{{ tag }}</span
+                      >
                     </div>
                   </div>
                   <ExternalLink :size="16" class="bookmark-external-icon" />
@@ -848,31 +872,54 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
 
 .tag-filter-button {
   padding: 6px 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
+  background: hsl(var(--tag-hue, 220), 70%, 95%);
+  border: 1px solid hsl(var(--tag-hue, 220), 60%, 75%);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: hsl(var(--tag-hue, 220), 70%, 35%);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
+[data-theme='dark'] .tag-filter-button {
+  background: hsl(var(--tag-hue, 220), 60%, 20%);
+  border-color: hsl(var(--tag-hue, 220), 50%, 35%);
+  color: hsl(var(--tag-hue, 220), 70%, 75%);
+}
+
 .tag-filter-button:hover {
-  background: var(--bg-secondary);
-  border-color: var(--border-secondary);
-  color: var(--text-primary);
+  background: hsl(var(--tag-hue, 220), 70%, 88%);
+  border-color: hsl(var(--tag-hue, 220), 60%, 65%);
+  color: hsl(var(--tag-hue, 220), 70%, 30%);
+}
+
+[data-theme='dark'] .tag-filter-button:hover {
+  background: hsl(var(--tag-hue, 220), 60%, 25%);
+  border-color: hsl(var(--tag-hue, 220), 50%, 45%);
+  color: hsl(var(--tag-hue, 220), 70%, 80%);
 }
 
 .tag-filter-button.active {
-  background: var(--btn-primary-bg);
-  border-color: var(--btn-primary-bg);
+  background: hsl(var(--tag-hue, 220), 70%, 50%);
+  border-color: hsl(var(--tag-hue, 220), 70%, 50%);
+  color: white;
+}
+
+[data-theme='dark'] .tag-filter-button.active {
+  background: hsl(var(--tag-hue, 220), 65%, 45%);
+  border-color: hsl(var(--tag-hue, 220), 65%, 45%);
   color: white;
 }
 
 .tag-filter-button.active:hover {
-  background: var(--btn-primary-hover);
-  border-color: var(--btn-primary-hover);
+  background: hsl(var(--tag-hue, 220), 70%, 45%);
+  border-color: hsl(var(--tag-hue, 220), 70%, 45%);
+}
+
+[data-theme='dark'] .tag-filter-button.active:hover {
+  background: hsl(var(--tag-hue, 220), 65%, 50%);
+  border-color: hsl(var(--tag-hue, 220), 65%, 50%);
 }
 
 .results-info {
@@ -978,12 +1025,18 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
 
 .tag {
   padding: 4px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
+  background: hsl(var(--tag-hue, 220), 70%, 95%);
+  border: 1px solid hsl(var(--tag-hue, 220), 60%, 75%);
   border-radius: 4px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: hsl(var(--tag-hue, 220), 70%, 35%);
+}
+
+[data-theme='dark'] .tag {
+  background: hsl(var(--tag-hue, 220), 60%, 20%);
+  border-color: hsl(var(--tag-hue, 220), 50%, 35%);
+  color: hsl(var(--tag-hue, 220), 70%, 75%);
 }
 
 .bookmark-external-icon {

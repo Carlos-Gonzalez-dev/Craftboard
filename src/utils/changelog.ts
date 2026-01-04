@@ -12,6 +12,7 @@ export const changelog: ChangelogEntry[] = [
       'Add direct links to the collections on most views',
       'Add active tasks counter on the tasks tab',
       'Improve bookmark filtering',
+      'Bookmark tags now have unique colors',
     ],
   },
   {
