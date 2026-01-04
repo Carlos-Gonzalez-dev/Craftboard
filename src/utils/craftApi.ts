@@ -137,7 +137,7 @@ export const setCacheExpiryHours = (hours: number) => {
 export const getShareToken = (): string | null => {
   const apiUrl = getApiUrl()
   if (!apiUrl) return null
-  
+
   const match = apiUrl.match(/\/links\/([^\/]+)\//)
   return match && match[1] ? match[1] : null
 }
@@ -157,10 +157,14 @@ export const buildCraftAppLinkForDailyNote = (date: string, spaceId?: string): s
 }
 
 // Build Craft web link (https://docs.craft.do/editor/d/{spaceId}/{documentId}?s={shareToken})
-export const buildCraftWebLink = (documentId: string, spaceId?: string, shareToken?: string): string | null => {
+export const buildCraftWebLink = (
+  documentId: string,
+  spaceId?: string,
+  shareToken?: string,
+): string | null => {
   const space = spaceId || getSpaceId()
   if (!space || !documentId) return null
-  
+
   const token = shareToken || getShareToken()
   if (token) {
     return `https://docs.craft.do/editor/d/${space}/${documentId}?s=${encodeURIComponent(token)}`
@@ -170,15 +174,19 @@ export const buildCraftWebLink = (documentId: string, spaceId?: string, shareTok
 }
 
 // Open a Craft link based on user preference
-export const openCraftLink = async (blockId: string, documentId?: string, clickableLink?: string) => {
+export const openCraftLink = async (
+  blockId: string,
+  documentId?: string,
+  clickableLink?: string,
+) => {
   const preference = getCraftLinkPreference()
   const spaceId = getSpaceId() || (await fetchAndCacheSpaceId()) || ''
-  
+
   if (!spaceId) {
     alert('Could not retrieve Space ID. Please configure it manually in Settings.')
     return
   }
-  
+
   if (preference === 'web' && documentId) {
     // Use clickableLink if available (contains correct document ID and share token)
     if (clickableLink) {
@@ -191,7 +199,7 @@ export const openCraftLink = async (blockId: string, documentId?: string, clicka
       return
     }
   }
-  
+
   // Default to app link
   const appLink = buildCraftAppLink(blockId, spaceId)
   if (appLink) {
@@ -315,9 +323,7 @@ export const listCollections = async (): Promise<Collection[]> => {
 export const discoverCraftboardCollections = async (): Promise<Collection[]> => {
   const allCollections = await listCollections()
   // Filter collections that start with "Craftboard" (case-insensitive)
-  return allCollections.filter((col) =>
-    col.name.toLowerCase().startsWith('craftboard'),
-  )
+  return allCollections.filter((col) => col.name.toLowerCase().startsWith('craftboard'))
 }
 
 // Helper to find a collection by partial name match (after "Craftboard" prefix)
@@ -360,14 +366,12 @@ export const getCollectionSchema = async (collectionId: string): Promise<Collect
 
   const rawSchema = await response.json()
 
-
   // Parse the JSON Schema format to extract properties
   // The schema has structure: properties.items.items.properties.properties.properties[propertyKey]
   const properties: CollectionProperty[] = []
 
   if (rawSchema.properties?.items?.items?.properties?.properties?.properties) {
     const propsObject = rawSchema.properties.items.items.properties.properties.properties
-
 
     for (const [key, propDef] of Object.entries(propsObject as Record<string, any>)) {
       let type = propDef.type || 'string'
@@ -407,7 +411,6 @@ export const getCollectionSchema = async (collectionId: string): Promise<Collect
       })
     }
   }
-
 
   return { properties }
 }
@@ -473,7 +476,7 @@ export interface CraftTask {
 // Fetch tasks from Craft API
 export const fetchTasks = async (
   scope?: 'inbox' | 'active' | 'upcoming' | 'logbook' | 'document',
-  documentId?: string
+  documentId?: string,
 ): Promise<{ items: CraftTask[] }> => {
   const apiUrl = getApiUrl()
   if (!apiUrl) {
@@ -613,7 +616,7 @@ export interface DocumentSearchResult {
 // Extract title from markdown snippet
 const extractTitleFromMarkdown = (markdown: string): string => {
   if (!markdown) return 'Untitled'
-  
+
   // Remove markdown formatting and HTML tags
   let text = markdown
     .replace(/\*\*/g, '') // Remove bold
@@ -621,9 +624,9 @@ const extractTitleFromMarkdown = (markdown: string): string => {
     .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Remove links, keep text
     .replace(/<[^>]*>/g, '') // Remove HTML tags
     .trim()
-  
+
   // Try to find a title pattern (first line, or text before | or newline)
-  const lines = text.split('\n').filter(line => line.trim())
+  const lines = text.split('\n').filter((line) => line.trim())
   if (lines.length > 0) {
     const firstLine = lines[0].trim()
     // If first line is short enough and doesn't start with ellipsis, use it
@@ -631,7 +634,7 @@ const extractTitleFromMarkdown = (markdown: string): string => {
       return firstLine.substring(0, 80)
     }
   }
-  
+
   // Extract first meaningful sentence
   const sentences = text.split(/[.!?]\s+/)
   if (sentences.length > 0) {
@@ -640,7 +643,7 @@ const extractTitleFromMarkdown = (markdown: string): string => {
       return firstSentence.substring(0, 80)
     }
   }
-  
+
   // Fallback: use first 60 characters
   return text.substring(0, 60).trim() || 'Untitled'
 }
@@ -651,10 +654,13 @@ export const searchDocuments = async (query: string): Promise<DocumentSearchResu
     throw new Error('Craft API URL not configured')
   }
 
-  const response = await fetch(`${apiUrl}/documents/search?include=${encodeURIComponent(query)}&fetchMetadata=true`, {
-    method: 'GET',
-    headers: getHeaders(),
-  })
+  const response = await fetch(
+    `${apiUrl}/documents/search?include=${encodeURIComponent(query)}&fetchMetadata=true`,
+    {
+      method: 'GET',
+      headers: getHeaders(),
+    },
+  )
 
   if (!response.ok) {
     throw new Error(`Failed to search documents: ${response.statusText}`)
@@ -737,7 +743,7 @@ export const getDocumentTitle = (block: BlockContent): string => {
       return match[1].trim()
     }
   }
-  
+
   // Try to find first text block with title
   if (block.content && Array.isArray(block.content)) {
     for (const child of block.content) {
@@ -819,25 +825,25 @@ export const parseCraftLink = (link: string): ParsedCraftLink | null => {
 // Extract document ID from either a Craft document URL or a plain document ID
 export const extractDocumentId = (input: string): string | null => {
   if (!input || !input.trim()) return null
-  
+
   const trimmed = input.trim()
-  
+
   // If it's already a plain document ID (no URL structure), return it
   if (!trimmed.includes('://') && !trimmed.includes('http') && !trimmed.includes('docs.craft.do')) {
     return trimmed
   }
-  
+
   // Try to parse as a Craft link
   const parsed = parseCraftLink(trimmed)
   if (parsed && parsed.documentId) {
     return parsed.documentId
   }
-  
+
   // If parseCraftLink didn't work but we have a blockId, use that
   if (parsed && parsed.blockId) {
     return parsed.blockId
   }
-  
+
   // If it looks like a web URL, try to extract from path
   if (trimmed.includes('docs.craft.do/editor/d/')) {
     try {
@@ -862,14 +868,16 @@ export const extractDocumentId = (input: string): string | null => {
       }
     }
   }
-  
+
   return null
 }
 
 // Fetch document titles for multiple document IDs
-export const fetchDocumentTitles = async (documentIds: string[]): Promise<Record<string, string>> => {
+export const fetchDocumentTitles = async (
+  documentIds: string[],
+): Promise<Record<string, string>> => {
   const titles: Record<string, string> = {}
-  
+
   // Fetch titles in parallel (limit to avoid too many requests)
   const promises = documentIds.slice(0, 10).map(async (id) => {
     try {
@@ -943,4 +951,3 @@ export const renderPropertyValue = (value: any, propertyType: string): string =>
       return String(value)
   }
 }
-

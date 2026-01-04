@@ -23,7 +23,8 @@ import ProgressIndicator from '../components/ProgressIndicator.vue'
 const route = useRoute()
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
-const setSubheader = inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
+const setSubheader =
+  inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
 // API Configuration
 const apiBaseUrl = ref('')
@@ -147,7 +148,7 @@ const initializeRSS = async (forceRefresh = false) => {
   // Count API calls needed
   let apiCallCount = 0
   if (forceRefresh || !getCachedData()) apiCallCount++ // fetchCollectionItems
-  
+
   totalApiCalls.value = apiCallCount
 
   if (!rssCollectionId.value) {
@@ -181,9 +182,10 @@ const discoverCollection = async (forceRefresh = false) => {
 
   // Load collection ID from settings
   const rssId = localStorage.getItem('collection-id-rss')
-  
+
   if (!rssId) {
-    errorMessage.value = 'RSS collection ID not configured. Please configure it in Settings > API > Collection IDs.'
+    errorMessage.value =
+      'RSS collection ID not configured. Please configure it in Settings > API > Collection IDs.'
     isLoading.value = false
     completedApiCalls.value++
     return
@@ -281,7 +283,6 @@ const fetchCollectionItems = async (forceRefresh = false) => {
         const tags =
           properties.tags || properties.Tags || properties['tags'] || properties['Tags'] || []
 
-
         // Only include items with all mandatory fields (title can be empty, but URL and category are required)
         if (url && category) {
           return {
@@ -295,7 +296,6 @@ const fetchCollectionItems = async (forceRefresh = false) => {
         return null
       })
       .filter((item: RSSCollectionItem | null): item is RSSCollectionItem => item !== null)
-
 
     rssItems.value = validItems
 
@@ -315,15 +315,12 @@ const fetchCollectionItems = async (forceRefresh = false) => {
 const fetchAllFeeds = async () => {
   isLoading.value = false
 
-
   // Fetch feeds for all items
   const feedPromises = rssItems.value.map((item) => fetchFeedForItem(item))
   await Promise.all(feedPromises)
-
 }
 
 const fetchFeedForItem = async (item: RSSCollectionItem, forceRefresh = false) => {
-
   // Skip if already loading (unless forcing refresh)
   if (!forceRefresh && (rssFeeds.value.has(item.id) || loadingFeeds.value.has(item.id))) {
     return
@@ -414,23 +411,34 @@ onMounted(() => {
   if (registerRefresh) {
     registerRefresh(String(route.name), refreshFeeds)
   }
-  
+
   // Register subheader
   if (setSubheader && !errorMessage.value && !isLoading.value && groupedItems.value.length > 0) {
     setSubheader({
-      default: () => h(ViewTabs, {
-        tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
-        activeTab: selectedCategory.value || '',
-        'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
-      }),
-      right: () => [
-        h(SubheaderButton, { title: 'Open RSS Collection in Craft', onClick: openCollectionInCraft }, {
-          default: () => h(ExternalLink, { size: 16 })
+      default: () =>
+        h(ViewTabs, {
+          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          activeTab: selectedCategory.value || '',
+          'onUpdate:activeTab': (tab: string) => {
+            selectedCategory.value = tab
+          },
         }),
-        h(SubheaderButton, { title: 'Refresh RSS feeds', onClick: refreshFeeds }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+      right: () => [
+        h(
+          SubheaderButton,
+          { title: 'Open RSS Collection in Craft', onClick: openCollectionInCraft },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          { title: 'Refresh RSS feeds', onClick: refreshFeeds },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   }
 })
@@ -447,19 +455,30 @@ onActivated(() => {
   // Re-register subheader
   if (setSubheader && !errorMessage.value && !isLoading.value && groupedItems.value.length > 0) {
     setSubheader({
-      default: () => h(ViewTabs, {
-        tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
-        activeTab: selectedCategory.value || '',
-        'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
-      }),
-      right: () => [
-        h(SubheaderButton, { title: 'Open RSS Collection in Craft', onClick: openCollectionInCraft }, {
-          default: () => h(ExternalLink, { size: 16 })
+      default: () =>
+        h(ViewTabs, {
+          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          activeTab: selectedCategory.value || '',
+          'onUpdate:activeTab': (tab: string) => {
+            selectedCategory.value = tab
+          },
         }),
-        h(SubheaderButton, { title: 'Refresh RSS feeds', onClick: refreshFeeds }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+      right: () => [
+        h(
+          SubheaderButton,
+          { title: 'Open RSS Collection in Craft', onClick: openCollectionInCraft },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          { title: 'Refresh RSS feeds', onClick: refreshFeeds },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   }
 })
@@ -468,19 +487,30 @@ onActivated(() => {
 watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () => {
   if (setSubheader && !errorMessage.value && !isLoading.value && groupedItems.value.length > 0) {
     setSubheader({
-      default: () => h(ViewTabs, {
-        tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
-        activeTab: selectedCategory.value || '',
-        'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
-      }),
-      right: () => [
-        h(SubheaderButton, { title: 'Open RSS Collection in Craft', onClick: openCollectionInCraft }, {
-          default: () => h(ExternalLink, { size: 16 })
+      default: () =>
+        h(ViewTabs, {
+          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          activeTab: selectedCategory.value || '',
+          'onUpdate:activeTab': (tab: string) => {
+            selectedCategory.value = tab
+          },
         }),
-        h(SubheaderButton, { title: 'Refresh RSS feeds', onClick: refreshFeeds }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+      right: () => [
+        h(
+          SubheaderButton,
+          { title: 'Open RSS Collection in Craft', onClick: openCollectionInCraft },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          { title: 'Refresh RSS feeds', onClick: refreshFeeds },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   } else if (setSubheader) {
     setSubheader(null)
@@ -916,8 +946,8 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
 a.feed-item-link:visited .feed-item,
 .feed-item-link:visited .feed-item,
 .feed-item-link:visited .feed-item,
-[data-theme="light"] a.feed-item-link:visited .feed-item,
-[data-theme="light"] .feed-item-link:visited .feed-item {
+[data-theme='light'] a.feed-item-link:visited .feed-item,
+[data-theme='light'] .feed-item-link:visited .feed-item {
   border: none !important;
   border-width: 0 !important;
   border-style: none !important;
@@ -942,8 +972,6 @@ a.feed-item-link:visited .feed-item,
   box-shadow: none !important;
   opacity: 0.8;
 }
-
-
 
 .feed-item-header {
   display: flex;

@@ -33,8 +33,10 @@ import SubheaderButton from '../components/SubheaderButton.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
 
 const route = useRoute()
-const registerRefresh = inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
-const setSubheader = inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
+const registerRefresh =
+  inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
+const setSubheader =
+  inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
 // Configure marked
 marked.setOptions({
@@ -218,9 +220,10 @@ const initializeFlashcards = async (forceRefresh = false) => {
   // Load collection IDs from settings
   const decksId = localStorage.getItem('collection-id-decks')
   const flashcardsId = localStorage.getItem('collection-id-flashcards')
-  
+
   if (!decksId || !flashcardsId) {
-    error.value = 'Collection IDs not configured. Please configure them in Settings > API > Collection IDs.'
+    error.value =
+      'Collection IDs not configured. Please configure them in Settings > API > Collection IDs.'
     loading.value = false
     return
   }
@@ -231,7 +234,7 @@ const initializeFlashcards = async (forceRefresh = false) => {
   // Count API calls needed
   let apiCallCount = 0
   if (forceRefresh || !getCachedData()) apiCallCount += 2 // loadDecks (2 calls: decks + flashcards)
-  
+
   totalApiCalls.value = apiCallCount
 
   // Load decks with the collection IDs
@@ -298,7 +301,6 @@ const clearCache = () => {
   }
 }
 
-
 const loadDecks = async (forceRefresh = false) => {
   if (!apiBaseUrl.value || !decksCollectionId.value || !flashcardsCollectionId.value) {
     loading.value = false
@@ -335,9 +337,13 @@ const loadDecks = async (forceRefresh = false) => {
     })
     if (!decksResponse.ok) {
       if (decksResponse.status === 404) {
-        throw new Error('Deck collection not found. Please check your Collection IDs in Settings > API.')
+        throw new Error(
+          'Deck collection not found. Please check your Collection IDs in Settings > API.',
+        )
       }
-      throw new Error(`Failed to fetch decks (${decksResponse.status}). Please check your Collection IDs in Settings > API.`)
+      throw new Error(
+        `Failed to fetch decks (${decksResponse.status}). Please check your Collection IDs in Settings > API.`,
+      )
     }
     const decksData = await decksResponse.json()
     completedApiCalls.value++
@@ -350,9 +356,13 @@ const loadDecks = async (forceRefresh = false) => {
     })
     if (!flashcardsResponse.ok) {
       if (flashcardsResponse.status === 404) {
-        throw new Error('Flashcard collection not found. Please check your Collection IDs in Settings > API.')
+        throw new Error(
+          'Flashcard collection not found. Please check your Collection IDs in Settings > API.',
+        )
       }
-      throw new Error(`Failed to fetch flashcards (${flashcardsResponse.status}). Please check your Collection IDs in Settings > API.`)
+      throw new Error(
+        `Failed to fetch flashcards (${flashcardsResponse.status}). Please check your Collection IDs in Settings > API.`,
+      )
     }
     const flashcardsData = await flashcardsResponse.json()
     completedApiCalls.value++
@@ -432,7 +442,6 @@ const extractImageUrls = () => {
 
 const preloadAllImages = () => {
   const imageUrls = extractImageUrls()
-
 
   imageUrls.forEach((url) => {
     if (!imageCache.value.has(url)) {
@@ -652,7 +661,6 @@ const saveSession = () => {
 
     // Update current sessions view
     sessions.value.push(sessionData)
-
   } catch (err) {
     console.error('Error saving session to localStorage:', err)
   }
@@ -867,19 +875,27 @@ onMounted(() => {
   if (setSubheader && !error.value) {
     setSubheader({
       right: () => [
-        h(SubheaderButton, {
-          title: 'Open Decks Collection in Craft',
-          onClick: openCollectionInCraft,
-        }, {
-          default: () => h(ExternalLink, { size: 16 })
-        }),
-        h(SubheaderButton, {
-          title: 'Refresh',
-          onClick: refreshFlashcards,
-        }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+        h(
+          SubheaderButton,
+          {
+            title: 'Open Decks Collection in Craft',
+            onClick: openCollectionInCraft,
+          },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          {
+            title: 'Refresh',
+            onClick: refreshFlashcards,
+          },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   }
 })
@@ -897,19 +913,27 @@ onActivated(() => {
   if (setSubheader && !error.value) {
     setSubheader({
       right: () => [
-        h(SubheaderButton, {
-          title: 'Open Decks Collection in Craft',
-          onClick: openCollectionInCraft,
-        }, {
-          default: () => h(ExternalLink, { size: 16 })
-        }),
-        h(SubheaderButton, {
-          title: 'Refresh',
-          onClick: refreshFlashcards,
-        }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+        h(
+          SubheaderButton,
+          {
+            title: 'Open Decks Collection in Craft',
+            onClick: openCollectionInCraft,
+          },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          {
+            title: 'Refresh',
+            onClick: refreshFlashcards,
+          },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   }
 })
@@ -937,90 +961,90 @@ onActivated(() => {
     <template v-if="!loading && !error && currentView === 'decks'">
       <!-- Deck Selection View -->
       <div class="decks-view">
-      <!-- Deck Selection -->
-      <div class="card">
-        <h2 class="section-title">
-          <BookOpen :size="20" class="section-icon" />
-          Choose a deck
-        </h2>
+        <!-- Deck Selection -->
+        <div class="card">
+          <h2 class="section-title">
+            <BookOpen :size="20" class="section-icon" />
+            Choose a deck
+          </h2>
 
-        <div v-if="decks.length === 0" class="empty-state">
-          <p>No decks available</p>
-        </div>
+          <div v-if="decks.length === 0" class="empty-state">
+            <p>No decks available</p>
+          </div>
 
-        <div v-else class="deck-list">
-          <div v-for="deck in decks" :key="deck.id" @click="selectDeck(deck)" class="deck-card">
-            <img
-              v-if="getDeckImage(deck)"
-              :src="getDeckImage(deck)"
-              class="deck-image"
-              :alt="deck.title"
-              loading="eager"
-              decoding="async"
-            />
-            <div class="deck-info">
-              <h3>{{ deck.title }}</h3>
-              <div class="deck-stats">
-                <span class="stat">
-                  <BookOpen :size="14" style="vertical-align: middle; margin-right: 4px" />
-                  {{ getFlashcardCount(deck) }} flashcards
-                </span>
-                <span class="stat">
-                  <BarChart3 :size="14" style="vertical-align: middle; margin-right: 4px" />
-                  {{ getSessionCount(deck) }} sessions
-                </span>
-                <span
-                  v-if="getAverageScore(deck) !== null"
-                  class="stat"
-                  :class="getAverageScoreClass(getAverageScore(deck))"
-                >
-                  <Star :size="14" style="vertical-align: middle; margin-right: 4px" />
-                  {{ getAverageScore(deck) }}% avg
-                </span>
+          <div v-else class="deck-list">
+            <div v-for="deck in decks" :key="deck.id" @click="selectDeck(deck)" class="deck-card">
+              <img
+                v-if="getDeckImage(deck)"
+                :src="getDeckImage(deck)"
+                class="deck-image"
+                :alt="deck.title"
+                loading="eager"
+                decoding="async"
+              />
+              <div class="deck-info">
+                <h3>{{ deck.title }}</h3>
+                <div class="deck-stats">
+                  <span class="stat">
+                    <BookOpen :size="14" style="vertical-align: middle; margin-right: 4px" />
+                    {{ getFlashcardCount(deck) }} flashcards
+                  </span>
+                  <span class="stat">
+                    <BarChart3 :size="14" style="vertical-align: middle; margin-right: 4px" />
+                    {{ getSessionCount(deck) }} sessions
+                  </span>
+                  <span
+                    v-if="getAverageScore(deck) !== null"
+                    class="stat"
+                    :class="getAverageScoreClass(getAverageScore(deck))"
+                  >
+                    <Star :size="14" style="vertical-align: middle; margin-right: 4px" />
+                    {{ getAverageScore(deck) }}% avg
+                  </span>
+                </div>
               </div>
+              <ChevronRight :size="20" class="deck-arrow" />
             </div>
-            <ChevronRight :size="20" class="deck-arrow" />
           </div>
         </div>
-      </div>
 
-      <!-- Recent Sessions Table -->
-      <div v-if="recentSessions.length > 0" class="card">
-        <div class="card-header">
-          <h2 class="section-title">
-            <Clock :size="20" class="section-icon" />
-            Recent sessions
-          </h2>
-          <button @click="clearSessions" class="clear-button">Clear all</button>
-        </div>
+        <!-- Recent Sessions Table -->
+        <div v-if="recentSessions.length > 0" class="card">
+          <div class="card-header">
+            <h2 class="section-title">
+              <Clock :size="20" class="section-icon" />
+              Recent sessions
+            </h2>
+            <button @click="clearSessions" class="clear-button">Clear all</button>
+          </div>
 
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Deck</th>
-                <th>Flashcards</th>
-                <th>Time</th>
-                <th>Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="session in recentSessions" :key="session.id">
-                <td>{{ formatSessionDate(session.title) }}</td>
-                <td>{{ getDeckNameForSession(session) }}</td>
-                <td class="text-center">{{ session.flashcards_played }}</td>
-                <td class="text-center">{{ formatElapsedTime(session.elapsedTime) }}</td>
-                <td class="text-center">
-                  <span class="score-badge" :class="getScoreClass(session.score)">
-                    {{ session.score }}%
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Deck</th>
+                  <th>Flashcards</th>
+                  <th>Time</th>
+                  <th>Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="session in recentSessions" :key="session.id">
+                  <td>{{ formatSessionDate(session.title) }}</td>
+                  <td>{{ getDeckNameForSession(session) }}</td>
+                  <td class="text-center">{{ session.flashcards_played }}</td>
+                  <td class="text-center">{{ formatElapsedTime(session.elapsedTime) }}</td>
+                  <td class="text-center">
+                    <span class="score-badge" :class="getScoreClass(session.score)">
+                      {{ session.score }}%
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
       </div>
     </template>
 
@@ -1043,7 +1067,12 @@ onActivated(() => {
         </div>
 
         <!-- Flashcard -->
-        <div v-if="currentCard" :key="currentCardIndex" class="flip-card" :class="{ flipped: isFlipped }">
+        <div
+          v-if="currentCard"
+          :key="currentCardIndex"
+          class="flip-card"
+          :class="{ flipped: isFlipped }"
+        >
           <!-- Exit button -->
           <button @click.stop="showExitModal = true" class="exit-button">
             <X :size="18" />

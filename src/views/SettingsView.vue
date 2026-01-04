@@ -802,8 +802,10 @@ function importDataFromFile(event: Event) {
                 </button>
               </div>
               <p class="field-hint">
-                <strong>Export:</strong> Download a complete backup of all your data (widgets, configuration, settings, and cache).<br />
-                <strong>Import:</strong> <span style="color: #b91c1c"
+                <strong>Export:</strong> Download a complete backup of all your data (widgets,
+                configuration, settings, and cache).<br />
+                <strong>Import:</strong>
+                <span style="color: #b91c1c"
                   >Warning: This will erase all current local data before importing.</span
                 >
                 The page will reload after a successful import.

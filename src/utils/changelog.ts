@@ -10,6 +10,7 @@ export const changelog: ChangelogEntry[] = [
       'Added import / export settings feature',
       'Optimized call to get document widget tasks',
       'Add direct links to the collections on most views',
+      'Add active tasks counter on the tasks tab',
     ],
   },
   {

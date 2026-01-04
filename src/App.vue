@@ -28,6 +28,7 @@ import {
 import { useRoute } from 'vue-router'
 import { useWidgetView } from './composables/useWidgetView'
 import { usePanes } from './composables/usePanes'
+import { useTasksStore } from './stores/tasks'
 import ViewSubheader from './components/ViewSubheader.vue'
 import PaneTabs from './components/PaneTabs.vue'
 import ViewTabs from './components/ViewTabs.vue'
@@ -35,6 +36,7 @@ import SubheaderButton from './components/SubheaderButton.vue'
 import { getLatestChangelogDate } from './utils/changelog'
 
 const route = useRoute()
+const tasksStore = useTasksStore()
 
 // Widget view mode (only for dashboard)
 const { isCompactView } = useWidgetView()
@@ -137,13 +139,31 @@ const showTasksTab = ref(true)
 // Navigation items configuration
 const navigationItems = computed(() => {
   const items = [
-    { path: '/', name: 'Dashboard', icon: LayoutDashboard, show: true },
-    { path: '/tasks', name: 'Tasks', icon: CheckSquare, show: showTasksTab.value },
-    { path: '/flashcards', name: 'Flashcards', icon: BookOpen, show: showFlashcardsTab.value },
-    { path: '/music', name: 'Music', icon: Music, show: showMusicTab.value },
-    { path: '/graph', name: 'Graph', icon: Network, show: showGraphTab.value },
-    { path: '/bookmarks', name: 'Bookmarks', icon: Bookmark, show: showBookmarksTab.value },
-    { path: '/rss', name: 'RSS', icon: Rss, show: showRSSTab.value },
+    { path: '/', name: 'Dashboard', icon: LayoutDashboard, show: true, badge: null },
+    {
+      path: '/tasks',
+      name: 'Tasks',
+      icon: CheckSquare,
+      show: showTasksTab.value,
+      badge: tasksStore.activeTasksCount > 0 ? tasksStore.activeTasksCount : null,
+    },
+    {
+      path: '/flashcards',
+      name: 'Flashcards',
+      icon: BookOpen,
+      show: showFlashcardsTab.value,
+      badge: null,
+    },
+    { path: '/music', name: 'Music', icon: Music, show: showMusicTab.value, badge: null },
+    { path: '/graph', name: 'Graph', icon: Network, show: showGraphTab.value, badge: null },
+    {
+      path: '/bookmarks',
+      name: 'Bookmarks',
+      icon: Bookmark,
+      show: showBookmarksTab.value,
+      badge: null,
+    },
+    { path: '/rss', name: 'RSS', icon: Rss, show: showRSSTab.value, badge: null },
   ]
   return items.filter((item) => item.show)
 })
@@ -396,6 +416,7 @@ onUnmounted(() => {
   if (systemThemeUnwatch.value) {
     systemThemeUnwatch.value()
   }
+
   if (paneTabsContainer.value) {
     paneTabsContainer.value.removeEventListener('scroll', checkScrollButtons)
     window.removeEventListener('resize', checkScrollButtons)
@@ -434,6 +455,7 @@ onUnmounted(() => {
           >
             <component :is="item.icon" :size="18" />
             <span>{{ item.name }}</span>
+            <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
           </router-link>
         </nav>
       </div>
@@ -489,6 +511,7 @@ onUnmounted(() => {
             >
               <component :is="item.icon" :size="16" />
               <span>{{ item.name }}</span>
+              <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
             </router-link>
           </div>
           <!-- Mobile Hamburger Button -->
@@ -894,6 +917,28 @@ body.study-mode .navbar {
 .nav-link.router-link-active:hover,
 .nav-link.router-link-exact-active:hover {
   background: var(--btn-primary-hover);
+}
+
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: #ef4444;
+  color: white;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  margin-left: auto;
+}
+
+.nav-link.router-link-active .nav-badge,
+.nav-link.router-link-exact-active .nav-badge {
+  background: rgba(255, 255, 255, 0.3);
+  color: white;
 }
 
 .content {

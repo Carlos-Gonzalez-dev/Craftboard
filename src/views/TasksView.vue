@@ -24,23 +24,26 @@ import {
 } from '../utils/craftApi'
 import { fetchCalendarEvents, type CalendarEvent } from '../utils/icalParser'
 import { useRoute } from 'vue-router'
+import { useTasksStore } from '../stores/tasks'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import ViewTabs from '../components/ViewTabs.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
 
 const route = useRoute()
+const tasksStore = useTasksStore()
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
-const setSubheader = inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
+const setSubheader =
+  inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
 // Cache keys
 const CACHE_PREFIX = 'tasks-cache-'
 
 // State
-const inboxTasks = ref<CraftTask[]>([])
-const activeTasks = ref<CraftTask[]>([])
-const upcomingTasks = ref<CraftTask[]>([])
+const inboxTasks = computed(() => tasksStore.inboxTasks)
+const activeTasks = computed(() => tasksStore.activeTasks)
+const upcomingTasks = computed(() => tasksStore.upcomingTasks)
 const errorMessage = ref('')
 const isLoading = ref(false)
 const dailyNotes = ref<Map<string, CraftDocument>>(new Map())
@@ -835,29 +838,29 @@ const loadTasks = async (forceRefresh = false) => {
   try {
     // Count API calls needed (only count if not cached or force refresh)
     let apiCallCount = 0
-    
+
     if (forceRefresh || !getCachedData('inbox')) apiCallCount++
     if (forceRefresh || !getCachedData('active')) apiCallCount++
     if (forceRefresh || !getCachedData('upcoming')) apiCallCount++
     if (forceRefresh || !getCachedDailyNotes()) apiCallCount++
     if (forceRefresh || !getCachedCalendarEvents()) apiCallCount++
-    
+
     totalApiCalls.value = apiCallCount
 
     // Load inbox tasks
     if (!forceRefresh) {
       const cachedInbox = getCachedData('inbox')
       if (cachedInbox) {
-        inboxTasks.value = cachedInbox
+        tasksStore.setInboxTasks(cachedInbox)
       } else {
         const inboxResult = await fetchTasks('inbox')
-        inboxTasks.value = inboxResult.items
+        tasksStore.setInboxTasks(inboxResult.items)
         setCachedData('inbox', inboxResult.items)
         completedApiCalls.value++
       }
     } else {
       const inboxResult = await fetchTasks('inbox')
-      inboxTasks.value = inboxResult.items
+      tasksStore.setInboxTasks(inboxResult.items)
       setCachedData('inbox', inboxResult.items)
       completedApiCalls.value++
     }
@@ -866,16 +869,16 @@ const loadTasks = async (forceRefresh = false) => {
     if (!forceRefresh) {
       const cachedActive = getCachedData('active')
       if (cachedActive) {
-        activeTasks.value = cachedActive
+        tasksStore.setActiveTasks(cachedActive)
       } else {
         const activeResult = await fetchTasks('active')
-        activeTasks.value = activeResult.items
+        tasksStore.setActiveTasks(activeResult.items)
         setCachedData('active', activeResult.items)
         completedApiCalls.value++
       }
     } else {
       const activeResult = await fetchTasks('active')
-      activeTasks.value = activeResult.items
+      tasksStore.setActiveTasks(activeResult.items)
       setCachedData('active', activeResult.items)
       completedApiCalls.value++
     }
@@ -884,16 +887,16 @@ const loadTasks = async (forceRefresh = false) => {
     if (!forceRefresh) {
       const cachedUpcoming = getCachedData('upcoming')
       if (cachedUpcoming) {
-        upcomingTasks.value = cachedUpcoming
+        tasksStore.setUpcomingTasks(cachedUpcoming)
       } else {
         const upcomingResult = await fetchTasks('upcoming')
-        upcomingTasks.value = upcomingResult.items
+        tasksStore.setUpcomingTasks(upcomingResult.items)
         setCachedData('upcoming', upcomingResult.items)
         completedApiCalls.value++
       }
     } else {
       const upcomingResult = await fetchTasks('upcoming')
-      upcomingTasks.value = upcomingResult.items
+      tasksStore.setUpcomingTasks(upcomingResult.items)
       setCachedData('upcoming', upcomingResult.items)
       completedApiCalls.value++
     }
@@ -1099,28 +1102,33 @@ onMounted(() => {
   // Register subheader
   if (setSubheader && !errorMessage.value) {
     setSubheader({
-      default: () => h(ViewTabs, { 
-        tabs: tabs.value, 
-        activeTab: activeTab.value, 
-        'onUpdate:activeTab': handleTabChange 
-      }),
+      default: () =>
+        h(ViewTabs, {
+          tabs: tabs.value,
+          activeTab: activeTab.value,
+          'onUpdate:activeTab': handleTabChange,
+        }),
       right: () => [
         h(ViewTabs, {
           tabs: [
             { id: 'week', label: 'Week', icon: Calendar },
-            { id: 'list', label: 'List', icon: LayoutGrid }
+            { id: 'list', label: 'List', icon: LayoutGrid },
           ],
           activeTab: viewMode.value,
-          'onUpdate:activeTab': (tab: string) => { 
+          'onUpdate:activeTab': (tab: string) => {
             if (tab === 'week' || tab === 'list') {
               viewMode.value = tab as 'week' | 'list'
             }
-          }
+          },
         }),
-        h(SubheaderButton, { title: 'Refresh tasks', onClick: refreshTasks }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+        h(
+          SubheaderButton,
+          { title: 'Refresh tasks', onClick: refreshTasks },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   }
 })
@@ -1138,28 +1146,33 @@ onActivated(() => {
   // Re-register subheader when activated
   if (setSubheader && !errorMessage.value) {
     setSubheader({
-      default: () => h(ViewTabs, { 
-        tabs: tabs.value, 
-        activeTab: activeTab.value, 
-        'onUpdate:activeTab': handleTabChange 
-      }),
+      default: () =>
+        h(ViewTabs, {
+          tabs: tabs.value,
+          activeTab: activeTab.value,
+          'onUpdate:activeTab': handleTabChange,
+        }),
       right: () => [
         h(ViewTabs, {
           tabs: [
             { id: 'week', label: 'Week', icon: Calendar },
-            { id: 'list', label: 'List', icon: LayoutGrid }
+            { id: 'list', label: 'List', icon: LayoutGrid },
           ],
           activeTab: viewMode.value,
-          'onUpdate:activeTab': (tab: string) => { 
+          'onUpdate:activeTab': (tab: string) => {
             if (tab === 'week' || tab === 'list') {
               viewMode.value = tab as 'week' | 'list'
             }
-          }
+          },
         }),
-        h(SubheaderButton, { title: 'Refresh tasks', onClick: refreshTasks }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+        h(
+          SubheaderButton,
+          { title: 'Refresh tasks', onClick: refreshTasks },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   }
 })

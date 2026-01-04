@@ -22,7 +22,8 @@ import ProgressIndicator from '../components/ProgressIndicator.vue'
 const route = useRoute()
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
-const setSubheader = inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
+const setSubheader =
+  inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
 // API Configuration
 const apiBaseUrl = ref('')
@@ -166,7 +167,7 @@ const initializeBookmarks = async (forceRefresh = false) => {
   // Count API calls needed
   let apiCallCount = 0
   if (forceRefresh || !getCachedData()) apiCallCount++ // fetchCollectionItems
-  
+
   totalApiCalls.value = apiCallCount
 
   if (!bookmarksCollectionId.value) {
@@ -197,9 +198,10 @@ const discoverCollection = async (forceRefresh = false) => {
 
   // Load collection ID from settings
   const bookmarksId = localStorage.getItem('collection-id-bookmarks')
-  
+
   if (!bookmarksId) {
-    errorMessage.value = 'Bookmarks collection ID not configured. Please configure it in Settings > API > Collection IDs.'
+    errorMessage.value =
+      'Bookmarks collection ID not configured. Please configure it in Settings > API > Collection IDs.'
     isLoading.value = false
     completedApiCalls.value++
     return
@@ -388,23 +390,39 @@ onMounted(() => {
       registerRefresh(String(route.name), refreshBookmarks)
     }
   }
-  
+
   // Register subheader
-  if (setSubheader && !errorMessage.value && !isLoading.value && groupedBookmarks.value.length > 0) {
+  if (
+    setSubheader &&
+    !errorMessage.value &&
+    !isLoading.value &&
+    groupedBookmarks.value.length > 0
+  ) {
     setSubheader({
-      default: () => h(ViewTabs, {
-        tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
-        activeTab: selectedCategory.value || '',
-        'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
-      }),
-      right: () => [
-        h(SubheaderButton, { title: 'Open Bookmarks Collection in Craft', onClick: openCollectionInCraft }, {
-          default: () => h(ExternalLink, { size: 16 })
+      default: () =>
+        h(ViewTabs, {
+          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          activeTab: selectedCategory.value || '',
+          'onUpdate:activeTab': (tab: string) => {
+            selectedCategory.value = tab
+          },
         }),
-        h(SubheaderButton, { title: 'Refresh Bookmarks', onClick: refreshBookmarks }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+      right: () => [
+        h(
+          SubheaderButton,
+          { title: 'Open Bookmarks Collection in Craft', onClick: openCollectionInCraft },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          { title: 'Refresh Bookmarks', onClick: refreshBookmarks },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   }
 })
@@ -420,42 +438,74 @@ onActivated(() => {
   loadApiUrl()
   initializeSelectedCategory()
   // Re-register subheader
-  if (setSubheader && !errorMessage.value && !isLoading.value && groupedBookmarks.value.length > 0) {
+  if (
+    setSubheader &&
+    !errorMessage.value &&
+    !isLoading.value &&
+    groupedBookmarks.value.length > 0
+  ) {
     setSubheader({
-      default: () => h(ViewTabs, {
-        tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
-        activeTab: selectedCategory.value || '',
-        'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
-      }),
-      right: () => [
-        h(SubheaderButton, { title: 'Open Bookmarks Collection in Craft', onClick: openCollectionInCraft }, {
-          default: () => h(ExternalLink, { size: 16 })
+      default: () =>
+        h(ViewTabs, {
+          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          activeTab: selectedCategory.value || '',
+          'onUpdate:activeTab': (tab: string) => {
+            selectedCategory.value = tab
+          },
         }),
-        h(SubheaderButton, { title: 'Refresh Bookmarks', onClick: refreshBookmarks }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+      right: () => [
+        h(
+          SubheaderButton,
+          { title: 'Open Bookmarks Collection in Craft', onClick: openCollectionInCraft },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          { title: 'Refresh Bookmarks', onClick: refreshBookmarks },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   }
 })
 
 // Watch for changes to update subheader
 watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks], () => {
-  if (setSubheader && !errorMessage.value && !isLoading.value && groupedBookmarks.value.length > 0) {
+  if (
+    setSubheader &&
+    !errorMessage.value &&
+    !isLoading.value &&
+    groupedBookmarks.value.length > 0
+  ) {
     setSubheader({
-      default: () => h(ViewTabs, {
-        tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
-        activeTab: selectedCategory.value || '',
-        'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
-      }),
-      right: () => [
-        h(SubheaderButton, { title: 'Open Bookmarks Collection in Craft', onClick: openCollectionInCraft }, {
-          default: () => h(ExternalLink, { size: 16 })
+      default: () =>
+        h(ViewTabs, {
+          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          activeTab: selectedCategory.value || '',
+          'onUpdate:activeTab': (tab: string) => {
+            selectedCategory.value = tab
+          },
         }),
-        h(SubheaderButton, { title: 'Refresh Bookmarks', onClick: refreshBookmarks }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+      right: () => [
+        h(
+          SubheaderButton,
+          { title: 'Open Bookmarks Collection in Craft', onClick: openCollectionInCraft },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          { title: 'Refresh Bookmarks', onClick: refreshBookmarks },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   } else if (setSubheader) {
     setSubheader(null)

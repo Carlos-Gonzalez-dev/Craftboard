@@ -345,13 +345,13 @@ const loadDailyNotes = async () => {
   try {
     const result = await fetchDocuments({ location: 'daily_notes', fetchMetadata: true })
     const notesMap = new Map<string, CraftDocument>()
-    
+
     result.items.forEach((doc) => {
       if (doc.dailyNoteDate) {
         notesMap.set(doc.dailyNoteDate, doc)
       }
     })
-    
+
     dailyNotes.value = notesMap
   } catch (error) {
     console.error('Error loading daily notes:', error)
@@ -569,7 +569,11 @@ watch(
                 <div
                   v-if="getDueDate(task)"
                   class="task-meta"
-                  :class="{ 'task-due-date-clickable': task.taskInfo?.scheduleDate && hasDailyNote(new Date(task.taskInfo.scheduleDate)) }"
+                  :class="{
+                    'task-due-date-clickable':
+                      task.taskInfo?.scheduleDate &&
+                      hasDailyNote(new Date(task.taskInfo.scheduleDate)),
+                  }"
                   @click.stop="handleDueDateClick(task)"
                 >
                   <Calendar :size="14" />
@@ -593,8 +597,7 @@ watch(
                   class="deadline-badge"
                   :class="{
                     'deadline-overdue': isDeadlineOverdue(task),
-                    'deadline-approaching':
-                      isDeadlineApproaching(task) && !isDeadlineOverdue(task),
+                    'deadline-approaching': isDeadlineApproaching(task) && !isDeadlineOverdue(task),
                   }"
                   :title="
                     isDeadlineOverdue(task)
@@ -625,7 +628,12 @@ watch(
         >
           <LinkIcon :size="14" />
         </button>
-        <button v-if="displayedTasks.length > 0" @click="refreshTasks" class="footer-button" title="Refresh tasks">
+        <button
+          v-if="displayedTasks.length > 0"
+          @click="refreshTasks"
+          class="footer-button"
+          title="Refresh tasks"
+        >
           <RefreshCw :size="14" />
         </button>
         <button @click="reconfigure" class="footer-button" title="Configure document">
@@ -1009,4 +1017,3 @@ watch(
   background: #f59e0b;
 }
 </style>
-
