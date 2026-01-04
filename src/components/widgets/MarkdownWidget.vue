@@ -180,4 +180,56 @@ if (saved) {
   padding: 0;
   color: inherit;
 }
+
+.markdown-preview :deep(a) {
+  color: var(--btn-primary-bg);
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.markdown-preview :deep(a:hover) {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.markdown-preview :deep(a:visited) {
+  color: var(--btn-primary-bg);
+}
+
+.markdown-preview :deep(blockquote) {
+  margin: 10px 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--border-primary);
+  color: var(--text-secondary);
+}
+
+.markdown-preview :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border-primary);
+  margin: 16px 0;
+}
+
+.markdown-preview :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.markdown-preview :deep(table th),
+.markdown-preview :deep(table td) {
+  border: 1px solid var(--border-primary);
+  padding: 6px 12px;
+  text-align: left;
+}
+
+.markdown-preview :deep(table th) {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+}
+
+.markdown-preview :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
 </style>
