@@ -13,10 +13,7 @@ const formatTime = (date: Date) => {
 }
 
 const formatSeconds = (date: Date) => {
-  return date.toLocaleTimeString('en-US', {
-    second: '2-digit',
-    hour12: false,
-  })
+  return date.getSeconds().toString().padStart(2, '0')
 }
 
 const getWeekNumber = (date: Date): number => {
@@ -56,11 +53,11 @@ onUnmounted(() => {
 
 <template>
   <div class="clock-widget">
+    <div class="week-year">{{ formatWeekAndYear(currentTime) }}</div>
     <div class="clock-display">
       <div class="time">{{ formatTime(currentTime) }}:{{ formatSeconds(currentTime) }}</div>
     </div>
     <div class="date">{{ formatDate(currentTime) }}</div>
-    <div class="week-year">{{ formatWeekAndYear(currentTime) }}</div>
   </div>
 </template>
 
