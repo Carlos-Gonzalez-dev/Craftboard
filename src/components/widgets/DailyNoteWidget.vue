@@ -13,6 +13,8 @@ import {
   buildCraftAppLinkForDailyNote,
   buildCraftWebLink,
   openCraftLink,
+  getCacheExpiryMs,
+  getApiUrl,
   type CraftDocument,
 } from '../../utils/craftApi'
 import ProgressIndicator from '../ProgressIndicator.vue'
@@ -36,11 +38,20 @@ const { isCompactView } = useWidgetView()
 const currentDate = ref<Date>(new Date())
 const markdown = ref<string>('')
 const documentId = ref<string | null>(null)
+const clickableLink = ref<string | null>(null)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
-const dailyNotes = ref<Map<string, CraftDocument>>(new Map())
 const totalApiCalls = ref(0)
 const completedApiCalls = ref(0)
+
+// Cache for daily notes to avoid duplicate requests
+interface CachedDailyNote {
+  markdown: string
+  documentId: string | null
+  clickableLink: string | null
+  timestamp: number
+}
+const dailyNoteCache = ref<Map<string, CachedDailyNote>>(new Map())
 
 // Computed date string for watching (prevents duplicate triggers)
 const currentDateStr = computed(() => formatDate(currentDate.value))
@@ -73,60 +84,102 @@ const isToday = computed(() => {
   )
 })
 
-// Load daily notes from the daily_notes folder
-const loadDailyNotes = async () => {
-  try {
-    const result = await fetchDocuments({ location: 'daily_notes', fetchMetadata: true })
-    const notesMap = new Map<string, CraftDocument>()
-
-    result.items.forEach((doc) => {
-      if (doc.dailyNoteDate) {
-        notesMap.set(doc.dailyNoteDate, doc)
-      }
-    })
-
-    dailyNotes.value = notesMap
-  } catch (error) {
-    console.error('Error loading daily notes:', error)
-    dailyNotes.value = new Map()
-  }
-}
-
-// Get daily note for current date
-const getDailyNoteForCurrentDate = computed(() => {
-  const dateStr = formatDate(currentDate.value)
-  return dailyNotes.value.get(dateStr) || null
-})
-
 // Load daily note for current date
-const loadDailyNote = async () => {
+const loadDailyNote = async (forceRefresh = false) => {
+  const dateStr = formatDate(currentDate.value)
+
+  // Check cache first
+  if (!forceRefresh) {
+    const cached = dailyNoteCache.value.get(dateStr)
+    const cacheExpiryMs = getCacheExpiryMs()
+    if (cached && cacheExpiryMs > 0 && Date.now() - cached.timestamp < cacheExpiryMs) {
+      markdown.value = cached.markdown
+      documentId.value = cached.documentId
+      clickableLink.value = cached.clickableLink
+      return
+    }
+  }
+
   isLoading.value = true
   error.value = null
-  totalApiCalls.value = 2
+  totalApiCalls.value = 1
   completedApiCalls.value = 0
 
   try {
-    const dateStr = formatDate(currentDate.value)
+    // Make a single request to get both content and document ID
+    const apiUrl = getApiUrl()
+    if (!apiUrl) {
+      throw new Error('Craft API URL not configured')
+    }
 
-    // Fetch both markdown content and document ID in parallel
-    const [content, docId] = await Promise.all([
-      getDailyNote(dateStr).then((result) => {
-        completedApiCalls.value++
-        return result
-      }),
-      getDailyNoteDocumentId(dateStr).then((result) => {
-        completedApiCalls.value++
-        return result
-      }),
-    ])
+    const response = await fetch(`${apiUrl}/blocks?date=${dateStr}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('craft-api-token')}`,
+        'Content-Type': 'application/json',
+      },
+    })
 
-    markdown.value = content || '*No content for this date*'
-    documentId.value = docId
+    completedApiCalls.value++
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Daily note doesn't exist for this date
+        markdown.value = '*No content for this date*'
+        documentId.value = null
+        clickableLink.value = null
+      } else {
+        throw new Error(`Failed to fetch daily note: ${response.statusText}`)
+      }
+    } else {
+      const data = await response.json()
+
+      // Extract document ID (root block ID)
+      documentId.value = data.id || null
+
+      // Extract markdown from the response
+      const extractMarkdown = (block: any): string[] => {
+        const lines: string[] = []
+        if (block.markdown && block.type !== 'page') {
+          lines.push(block.markdown)
+        }
+        if (block.content && Array.isArray(block.content)) {
+          for (const child of block.content) {
+            lines.push(...extractMarkdown(child))
+          }
+        }
+        return lines
+      }
+
+      const markdownLines = extractMarkdown(data)
+      markdown.value =
+        markdownLines.length > 0 ? markdownLines.join('\n\n') : '*No content for this date*'
+
+      // Construct clickableLink if we have documentId
+      if (documentId.value) {
+        const spaceId = await getSpaceId()
+        if (spaceId) {
+          clickableLink.value = `https://www.craft.do/s/${spaceId}/${documentId.value}`
+        } else {
+          clickableLink.value = null
+        }
+      } else {
+        clickableLink.value = null
+      }
+    }
+
+    // Cache the result
+    dailyNoteCache.value.set(dateStr, {
+      markdown: markdown.value,
+      documentId: documentId.value,
+      clickableLink: clickableLink.value,
+      timestamp: Date.now(),
+    })
 
     // Save current date to widget data
     const widgetData = {
       currentDate: dateStr,
-      documentId: docId,
+      documentId: documentId.value,
     }
     emit('update:data', widgetData)
   } catch (err) {
@@ -134,6 +187,7 @@ const loadDailyNote = async () => {
     error.value = err instanceof Error ? err.message : 'Failed to load daily note'
     markdown.value = '*Error loading daily note*'
     documentId.value = null
+    clickableLink.value = null
     completedApiCalls.value = totalApiCalls.value // Mark all as completed on error
   } finally {
     isLoading.value = false
@@ -161,7 +215,7 @@ const goToToday = () => {
 
 // Refresh current daily note
 const refresh = async () => {
-  await loadDailyNote()
+  await loadDailyNote(true) // Force refresh bypasses cache
 }
 
 // Watch for date changes and reload (watch the formatted string to avoid duplicate triggers)
@@ -175,9 +229,6 @@ watch(
 
 // Load saved date from widget data or default to today
 onMounted(async () => {
-  // Load daily notes first
-  await loadDailyNotes()
-
   if (props.widget.data?.currentDate) {
     const savedDate = new Date(props.widget.data.currentDate)
     if (!isNaN(savedDate.getTime())) {
@@ -220,28 +271,24 @@ const html = computed(() => {
 
 // Check if daily note exists and has a clickableLink
 const hasDailyNoteLink = computed(() => {
-  const dailyNote = getDailyNoteForCurrentDate.value
-  return !!(dailyNote && dailyNote.clickableLink)
+  return !!clickableLink.value
 })
 
 const openInCraft = async () => {
-  const dailyNote = getDailyNoteForCurrentDate.value
-
-  // Only open if daily note exists and has a clickableLink
-  if (!dailyNote || !dailyNote.clickableLink) {
+  // Only open if we have a clickableLink
+  if (!clickableLink.value) {
     return
   }
 
   const preference = getCraftLinkPreference()
 
   if (preference === 'web') {
-    // Use the clickableLink from the daily note
-    window.open(dailyNote.clickableLink, '_blank')
+    // Use the clickableLink
+    window.open(clickableLink.value, '_blank')
   } else {
     // For app, use openCraftLink with the document ID
-    const docId = dailyNote.id
-    if (docId) {
-      await openCraftLink(docId, docId)
+    if (documentId.value) {
+      await openCraftLink(documentId.value, documentId.value, clickableLink.value)
     }
   }
 }
