@@ -6,7 +6,10 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: '2026-01-04',
-    changes: ['Added import / export settings feature'],
+    changes: [
+      'Added import / export settings feature',
+      'Optimized call to get document widget tasks',
+    ],
   },
   {
     date: '2025-12-27',

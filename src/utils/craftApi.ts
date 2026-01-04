@@ -471,7 +471,10 @@ export interface CraftTask {
 }
 
 // Fetch tasks from Craft API
-export const fetchTasks = async (scope?: 'inbox' | 'active' | 'upcoming' | 'logbook'): Promise<{ items: CraftTask[] }> => {
+export const fetchTasks = async (
+  scope?: 'inbox' | 'active' | 'upcoming' | 'logbook' | 'document',
+  documentId?: string
+): Promise<{ items: CraftTask[] }> => {
   const apiUrl = getApiUrl()
   if (!apiUrl) {
     throw new Error('Craft API URL not configured')
@@ -480,6 +483,9 @@ export const fetchTasks = async (scope?: 'inbox' | 'active' | 'upcoming' | 'logb
   const params = new URLSearchParams()
   if (scope) {
     params.append('scope', scope)
+  }
+  if (documentId) {
+    params.append('documentId', documentId)
   }
 
   const response = await fetch(`${apiUrl}/tasks?${params}`, {

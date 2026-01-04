@@ -154,52 +154,22 @@ const loadTasks = async (forceRefresh = false) => {
     const cached = getCachedData()
     if (cached) {
       tasks.value = cached
-      // Still load daily notes for date navigation (but don't show loading for this)
-      await loadDailyNotes()
       return
     }
   }
 
   // Only set loading state if we need to fetch from API
   isLoading.value = true
-  totalApiCalls.value = 3
+  totalApiCalls.value = 1
   completedApiCalls.value = 0
 
   try {
+    // Fetch tasks for this specific document using scope=document
+    const result = await fetchTasks('document', documentId.value)
+    completedApiCalls.value++
 
-    // Fetch all tasks from different scopes
-    const [inboxResult, activeResult, upcomingResult] = await Promise.all([
-      fetchTasks('inbox').then((result) => {
-        completedApiCalls.value++
-        return result
-      }),
-      fetchTasks('active').then((result) => {
-        completedApiCalls.value++
-        return result
-      }),
-      fetchTasks('upcoming').then((result) => {
-        completedApiCalls.value++
-        return result
-      }),
-    ])
-
-    // Combine all tasks
-    const allTasks = [
-      ...inboxResult.items,
-      ...activeResult.items,
-      ...upcomingResult.items,
-    ]
-
-    // Filter tasks for this document
-    const documentTasks = allTasks.filter(
-      (task) => task.location?.documentId === documentId.value,
-    )
-
-    tasks.value = documentTasks
-    setCachedData(documentTasks)
-
-    // Load daily notes for date navigation
-    await loadDailyNotes()
+    tasks.value = result.items
+    setCachedData(result.items)
   } catch (err) {
     console.error('Error loading tasks:', err)
     error.value = err instanceof Error ? err.message : 'Failed to load tasks'
