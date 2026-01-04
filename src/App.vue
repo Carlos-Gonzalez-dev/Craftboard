@@ -24,6 +24,7 @@ import {
   Move,
   Menu,
   HelpCircle,
+  Download,
 } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useWidgetView } from './composables/useWidgetView'
@@ -248,6 +249,43 @@ const loadNavTabSettings = () => {
   showTasksTab.value = localStorage.getItem('show-tasks-tab') !== 'false'
 }
 
+// Update detection
+const updateAvailable = ref(false)
+const showUpdateModal = ref(false)
+let updateCheckInterval: number | null = null
+
+const checkForUpdates = async () => {
+  try {
+    // Fetch the version.txt file with cache-busting timestamp
+    const response = await fetch(`/version.txt?t=${Date.now()}`, {
+      cache: 'no-cache',
+      headers: {
+        'Cache-Control': 'no-cache',
+      },
+    })
+
+    if (!response.ok) return
+
+    const serverVersion = (await response.text()).trim()
+
+    // Compare with current version
+    if (serverVersion && serverVersion !== appVersion) {
+      updateAvailable.value = true
+    }
+  } catch (error) {
+    // Silently fail - don't bother the user with network errors
+    console.debug('Update check failed:', error)
+  }
+}
+
+const showUpdateNotification = () => {
+  showUpdateModal.value = true
+}
+
+const updateApp = () => {
+  window.location.reload()
+}
+
 const handleStorageChange = (e: StorageEvent) => {
   if (e.key === 'dashboard-title') {
     dashboardTitle.value = e.newValue || 'Craftboard'
@@ -397,6 +435,10 @@ onMounted(() => {
   window.addEventListener('nav-tabs-updated', handleCustomEvent)
   systemThemeUnwatch.value = watchSystemTheme()
 
+  // Check for updates on mount and then every 5 minutes
+  checkForUpdates()
+  updateCheckInterval = window.setInterval(checkForUpdates, 5 * 60 * 1000)
+
   if (isDashboard.value) {
     loadPanes()
     // Check scroll buttons after a short delay to ensure DOM is ready
@@ -419,6 +461,10 @@ onUnmounted(() => {
   window.removeEventListener('nav-tabs-updated', handleCustomEvent)
   if (systemThemeUnwatch.value) {
     systemThemeUnwatch.value()
+  }
+
+  if (updateCheckInterval) {
+    clearInterval(updateCheckInterval)
   }
 
   if (paneTabsContainer.value) {
@@ -481,9 +527,15 @@ onUnmounted(() => {
           <div class="mobile-footer-left">
             <img src="/favicon.svg" alt="Craftboard" class="mobile-footer-icon" />
             <span>{{ dashboardTitle }}</span>
-            <span v-if="latestChangelogDate" class="mobile-footer-version">{{
-              latestChangelogDate
-            }}</span>
+            <button
+              v-if="latestChangelogDate"
+              @click="updateAvailable ? showUpdateNotification() : null"
+              class="mobile-footer-version"
+              :class="{ 'update-available': updateAvailable }"
+              :title="updateAvailable ? 'Update available! Click to update' : ''"
+            >
+              {{ latestChangelogDate }}
+            </button>
           </div>
           <div class="mobile-footer-right">
             <span class="mobile-footer-about">Carlos González, 2025</span>
@@ -612,7 +664,15 @@ onUnmounted(() => {
       <div class="footer-left">
         <img src="/favicon.svg" alt="Craftboard" class="footer-icon" />
         <span>{{ dashboardTitle }}</span>
-        <span v-if="latestChangelogDate" class="footer-version">{{ latestChangelogDate }}</span>
+        <button
+          v-if="latestChangelogDate"
+          @click="updateAvailable ? showUpdateNotification() : null"
+          class="footer-version"
+          :class="{ 'update-available': updateAvailable }"
+          :title="updateAvailable ? 'Update available! Click to update' : ''"
+        >
+          {{ latestChangelogDate }}
+        </button>
       </div>
       <div class="footer-right">
         <span class="footer-about">Carlos González, 2025 - 2026</span>
@@ -651,6 +711,30 @@ onUnmounted(() => {
           <button @click="((showPaneNameModal = false), (newPaneName = ''))" class="cancel-button">
             Cancel
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Update Available Modal -->
+    <div v-if="showUpdateModal" class="modal-overlay" @click.self="showUpdateModal = false">
+      <div class="modal update-modal">
+        <div class="modal-header-with-icon">
+          <div class="modal-icon">
+            <Download :size="24" />
+          </div>
+          <h2>Update Available</h2>
+        </div>
+        <p class="modal-description">
+          A new version of Craftboard is available! Click the button below to reload and get the
+          latest features and improvements.
+        </p>
+
+        <div class="button-group">
+          <button @click="updateApp" class="update-button">
+            <RefreshCw :size="16" />
+            <span>Update Now</span>
+          </button>
+          <button @click="showUpdateModal = false" class="cancel-button">Later</button>
         </div>
       </div>
     </div>
@@ -814,6 +898,65 @@ body.study-mode .navbar {
   color: var(--text-tertiary);
   margin-left: 4px;
   font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: default;
+  transition: all 0.2s ease;
+  position: relative;
+  /* Override parent gradient text */
+  -webkit-text-fill-color: var(--text-tertiary);
+  background-clip: unset;
+  -webkit-background-clip: unset;
+}
+
+.footer-version.update-available {
+  cursor: pointer;
+  background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+  color: white;
+  padding: 4px 10px;
+  padding-right: 24px;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.4);
+  -webkit-text-fill-color: white;
+}
+
+.footer-version.update-available::after {
+  content: '•';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: white;
+  font-size: 16px;
+  animation: blink 1.5s ease-in-out infinite;
+}
+
+.footer-version.update-available:hover {
+  background: linear-gradient(135deg, #c084fc 0%, #818cf8 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.5);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .footer-right {
@@ -1360,6 +1503,45 @@ body.study-mode .navbar {
   color: var(--text-tertiary);
   margin-left: 4px;
   font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: default;
+  transition: all 0.2s ease;
+  position: relative;
+  /* Override parent gradient text */
+  -webkit-text-fill-color: var(--text-tertiary);
+  background-clip: unset;
+  -webkit-background-clip: unset;
+}
+
+.mobile-footer-version.update-available {
+  cursor: pointer;
+  background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+  color: white;
+  padding: 4px 10px;
+  padding-right: 24px;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.4);
+  -webkit-text-fill-color: white;
+}
+
+.mobile-footer-version.update-available::after {
+  content: '•';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: white;
+  font-size: 16px;
+  animation: blink 1.5s ease-in-out infinite;
+}
+
+.mobile-footer-version.update-available:hover {
+  background: linear-gradient(135deg, #c084fc 0%, #818cf8 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.5);
 }
 
 .mobile-footer-right {
@@ -1958,6 +2140,63 @@ body.study-mode .navbar {
   background: var(--bg-tertiary);
   color: var(--text-primary);
   border-color: var(--border-secondary);
+}
+
+/* Update Modal Styles */
+.update-modal {
+  max-width: 420px;
+}
+
+.modal-header-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.modal-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+  border-radius: 12px;
+  color: white;
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+}
+
+.modal-header-with-icon h2 {
+  margin: 0;
+}
+
+.update-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+}
+
+.update-button:hover {
+  background: linear-gradient(135deg, #c084fc 0%, #818cf8 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.4);
+}
+
+.update-button:active {
+  transform: translateY(0);
 }
 
 /* View Mode Buttons in Pane Tabs */
