@@ -581,19 +581,17 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
                   >
                     <X :size="16" />
                   </button>
+                  <button
+                    @click="clearFilters"
+                    class="clear-filters-icon-button"
+                    :disabled="selectedTags.size === 0 && !searchQuery"
+                    title="Clear filters"
+                  >
+                    <X :size="18" />
+                  </button>
                 </div>
 
                 <div v-if="allTags.length > 0" class="tags-filter">
-                  <div class="tags-filter-header">
-                    <span class="tags-filter-label">Filter by tags:</span>
-                    <button
-                      v-if="selectedTags.size > 0"
-                      @click="clearFilters"
-                      class="clear-filters-button"
-                    >
-                      Clear filters
-                    </button>
-                  </div>
                   <div class="tags-list">
                     <button
                       v-for="tag in allTags"
@@ -828,40 +826,37 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
   color: var(--text-primary);
 }
 
+.clear-filters-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: 8px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.clear-filters-icon-button:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-secondary);
+}
+
+.clear-filters-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .tags-filter {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.tags-filter-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.tags-filter-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.clear-filters-button {
-  padding: 4px 12px;
-  background: transparent;
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.clear-filters-button:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border-color: var(--border-secondary);
 }
 
 .tags-list {
