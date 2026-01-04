@@ -43,6 +43,7 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 const totalApiCalls = ref(0)
 const completedApiCalls = ref(0)
+const hasInitiallyLoaded = ref(false)
 
 // Cache for daily notes to avoid duplicate requests
 interface CachedDailyNote {
@@ -140,8 +141,13 @@ const loadDailyNote = async (forceRefresh = false) => {
       // Extract markdown from the response
       const extractMarkdown = (block: any): string[] => {
         const lines: string[] = []
-        if (block.markdown && block.type !== 'page') {
+        // Include markdown if it's a task or not a page type
+        if (block.markdown && (block.listStyle === 'task' || block.type !== 'page')) {
           lines.push(block.markdown)
+        }
+        // If it's a task, don't process its content (completed/canceled history)
+        if (block.listStyle === 'task') {
+          return lines
         }
         if (block.content && Array.isArray(block.content)) {
           for (const child of block.content) {
@@ -229,6 +235,9 @@ watch(
 
 // Load saved date from widget data or default to today
 onMounted(async () => {
+  if (hasInitiallyLoaded.value) return
+  hasInitiallyLoaded.value = true
+
   if (props.widget.data?.currentDate) {
     const savedDate = new Date(props.widget.data.currentDate)
     if (!isNaN(savedDate.getTime())) {
@@ -539,6 +548,16 @@ const openInCraft = async () => {
   background: none;
   padding: 0;
   color: inherit;
+}
+
+/* Hide bullet markers for task lists */
+.markdown-content :deep(ul) {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.markdown-content :deep(li) {
+  list-style-type: none;
 }
 
 .widget-footer {

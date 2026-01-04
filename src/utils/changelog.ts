@@ -11,6 +11,7 @@ export const changelog: ChangelogEntry[] = [
       'Added button to reload app if a new version is released',
       'Deleted PIN Widget. It was not being used',
       'Minor adjustements to ClockWidget',
+      'Improve DailyNoteWidget',
     ],
   },
   {
