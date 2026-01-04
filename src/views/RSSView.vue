@@ -6,6 +6,11 @@ import {
   getApiToken,
   getCollectionItems,
   getCacheExpiryMs,
+  getCraftLinkPreference,
+  buildCraftAppLink,
+  buildCraftWebLink,
+  getSpaceId,
+  getShareToken,
 } from '../utils/craftApi'
 import { fetchRSSFeed, type RSSFeed } from '../utils/rssParser'
 import { getFaviconUrl } from '../utils/favicon'
@@ -361,6 +366,25 @@ const refreshFeeds = async () => {
   await initializeRSS(true)
 }
 
+const openCollectionInCraft = () => {
+  if (!rssCollectionId.value) return
+  const preference = getCraftLinkPreference()
+  const spaceId = getSpaceId()
+  if (!spaceId) return
+
+  if (preference === 'web') {
+    const webLink = buildCraftWebLink(rssCollectionId.value, spaceId, getShareToken())
+    if (webLink) {
+      window.open(webLink, '_blank')
+    }
+  } else {
+    const appLink = buildCraftAppLink(rssCollectionId.value, spaceId)
+    if (appLink) {
+      window.location.href = appLink
+    }
+  }
+}
+
 const formatDate = (dateString?: string) => {
   if (!dateString) return ''
   try {
@@ -399,9 +423,14 @@ onMounted(() => {
         activeTab: selectedCategory.value || '',
         'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
       }),
-      right: () => h(SubheaderButton, { title: 'Refresh RSS feeds', onClick: refreshFeeds }, {
-        default: () => h(RefreshCw, { size: 16 })
-      })
+      right: () => [
+        h(SubheaderButton, { title: 'Open RSS Collection in Craft', onClick: openCollectionInCraft }, {
+          default: () => h(ExternalLink, { size: 16 })
+        }),
+        h(SubheaderButton, { title: 'Refresh RSS feeds', onClick: refreshFeeds }, {
+          default: () => h(RefreshCw, { size: 16 })
+        })
+      ]
     })
   }
 })
@@ -423,9 +452,14 @@ onActivated(() => {
         activeTab: selectedCategory.value || '',
         'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
       }),
-      right: () => h(SubheaderButton, { title: 'Refresh RSS feeds', onClick: refreshFeeds }, {
-        default: () => h(RefreshCw, { size: 16 })
-      })
+      right: () => [
+        h(SubheaderButton, { title: 'Open RSS Collection in Craft', onClick: openCollectionInCraft }, {
+          default: () => h(ExternalLink, { size: 16 })
+        }),
+        h(SubheaderButton, { title: 'Refresh RSS feeds', onClick: refreshFeeds }, {
+          default: () => h(RefreshCw, { size: 16 })
+        })
+      ]
     })
   }
 })
@@ -439,9 +473,14 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
         activeTab: selectedCategory.value || '',
         'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
       }),
-      right: () => h(SubheaderButton, { title: 'Refresh RSS feeds', onClick: refreshFeeds }, {
-        default: () => h(RefreshCw, { size: 16 })
-      })
+      right: () => [
+        h(SubheaderButton, { title: 'Open RSS Collection in Craft', onClick: openCollectionInCraft }, {
+          default: () => h(ExternalLink, { size: 16 })
+        }),
+        h(SubheaderButton, { title: 'Refresh RSS feeds', onClick: refreshFeeds }, {
+          default: () => h(RefreshCw, { size: 16 })
+        })
+      ]
     })
   } else if (setSubheader) {
     setSubheader(null)

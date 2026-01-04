@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, h, onActivated, inject } from 'vue'
-import { RefreshCw, Music as MusicIcon } from 'lucide-vue-next'
-import { getApiUrl, getApiToken, getCacheExpiryMs } from '../utils/craftApi'
+import { RefreshCw, Music as MusicIcon, ExternalLink } from 'lucide-vue-next'
+import {
+  getApiUrl,
+  getApiToken,
+  getCacheExpiryMs,
+  getCraftLinkPreference,
+  buildCraftAppLink,
+  buildCraftWebLink,
+  getSpaceId,
+  getShareToken,
+} from '../utils/craftApi'
 import { useRoute } from 'vue-router'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import ViewTabs from '../components/ViewTabs.vue'
@@ -566,6 +575,25 @@ const refreshData = () => {
   initializeMusic(true) // Force refresh everything
 }
 
+const openCollectionInCraft = () => {
+  if (!musicCollectionId.value) return
+  const preference = getCraftLinkPreference()
+  const spaceId = getSpaceId()
+  if (!spaceId) return
+
+  if (preference === 'web') {
+    const webLink = buildCraftWebLink(musicCollectionId.value, spaceId, getShareToken())
+    if (webLink) {
+      window.open(webLink, '_blank')
+    }
+  } else {
+    const appLink = buildCraftAppLink(musicCollectionId.value, spaceId)
+    if (appLink) {
+      window.location.href = appLink
+    }
+  }
+}
+
 const selectPlaylist = (playlist: any) => {
   selectedPlaylist.value = playlist
 }
@@ -710,7 +738,14 @@ onMounted(() => {
             selectedGenre.value = tab
           },
         }),
-      right: () =>
+      right: () => [
+        h(
+          SubheaderButton,
+          { title: 'Open Playlists Collection in Craft', onClick: openCollectionInCraft },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
         h(
           SubheaderButton,
           { title: 'Refresh music library', onClick: refreshData },
@@ -718,6 +753,7 @@ onMounted(() => {
             default: () => h(RefreshCw, { size: 16 }),
           },
         ),
+      ],
     })
   }
 })
@@ -740,7 +776,14 @@ watch([selectedGenre, genreTabs, errorMessage, isLoading], () => {
             selectedGenre.value = tab
           },
         }),
-      right: () =>
+      right: () => [
+        h(
+          SubheaderButton,
+          { title: 'Open Playlists Collection in Craft', onClick: openCollectionInCraft },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
         h(
           SubheaderButton,
           { title: 'Refresh music library', onClick: refreshData },
@@ -748,6 +791,7 @@ watch([selectedGenre, genreTabs, errorMessage, isLoading], () => {
             default: () => h(RefreshCw, { size: 16 }),
           },
         ),
+      ],
     })
   }
 })
@@ -766,7 +810,14 @@ onActivated(() => {
             selectedGenre.value = tab
           },
         }),
-      right: () =>
+      right: () => [
+        h(
+          SubheaderButton,
+          { title: 'Open Playlists Collection in Craft', onClick: openCollectionInCraft },
+          {
+            default: () => h(ExternalLink, { size: 16 }),
+          },
+        ),
         h(
           SubheaderButton,
           { title: 'Refresh music library', onClick: refreshData },
@@ -774,6 +825,7 @@ onActivated(() => {
             default: () => h(RefreshCw, { size: 16 }),
           },
         ),
+      ],
     })
   }
 })

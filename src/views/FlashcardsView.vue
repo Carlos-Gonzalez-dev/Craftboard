@@ -15,12 +15,18 @@ import {
   Trophy,
   Flag,
   ArrowLeft,
+  ExternalLink,
 } from 'lucide-vue-next'
 import { useRouter, useRoute } from 'vue-router'
 import {
   getApiUrl,
   getApiToken,
   getCacheExpiryMs,
+  getCraftLinkPreference,
+  buildCraftAppLink,
+  buildCraftWebLink,
+  getSpaceId,
+  getShareToken,
 } from '../utils/craftApi'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
@@ -178,6 +184,25 @@ const loadApiUrl = () => {
 const refreshFlashcards = async () => {
   clearCache()
   await initializeFlashcards(true)
+}
+
+const openCollectionInCraft = () => {
+  if (!decksCollectionId.value) return
+  const preference = getCraftLinkPreference()
+  const spaceId = getSpaceId()
+  if (!spaceId) return
+
+  if (preference === 'web') {
+    const webLink = buildCraftWebLink(decksCollectionId.value, spaceId, getShareToken())
+    if (webLink) {
+      window.open(webLink, '_blank')
+    }
+  } else {
+    const appLink = buildCraftAppLink(decksCollectionId.value, spaceId)
+    if (appLink) {
+      window.location.href = appLink
+    }
+  }
 }
 
 const initializeFlashcards = async (forceRefresh = false) => {
@@ -843,6 +868,12 @@ onMounted(() => {
     setSubheader({
       right: () => [
         h(SubheaderButton, {
+          title: 'Open Decks Collection in Craft',
+          onClick: openCollectionInCraft,
+        }, {
+          default: () => h(ExternalLink, { size: 16 })
+        }),
+        h(SubheaderButton, {
           title: 'Refresh',
           onClick: refreshFlashcards,
         }, {
@@ -866,6 +897,12 @@ onActivated(() => {
   if (setSubheader && !error.value) {
     setSubheader({
       right: () => [
+        h(SubheaderButton, {
+          title: 'Open Decks Collection in Craft',
+          onClick: openCollectionInCraft,
+        }, {
+          default: () => h(ExternalLink, { size: 16 })
+        }),
         h(SubheaderButton, {
           title: 'Refresh',
           onClick: refreshFlashcards,

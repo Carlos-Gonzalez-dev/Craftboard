@@ -9,6 +9,7 @@ export const changelog: ChangelogEntry[] = [
     changes: [
       'Added import / export settings feature',
       'Optimized call to get document widget tasks',
+      'Add direct links to the collections on most views',
     ],
   },
   {

@@ -6,6 +6,11 @@ import {
   getApiToken,
   getCollectionItems,
   getCacheExpiryMs,
+  getCraftLinkPreference,
+  buildCraftAppLink,
+  buildCraftWebLink,
+  getSpaceId,
+  getShareToken,
 } from '../utils/craftApi'
 import { getFaviconUrl, getDomain } from '../utils/favicon'
 import { useRoute } from 'vue-router'
@@ -323,6 +328,25 @@ const refreshBookmarks = async () => {
   await initializeBookmarks(true)
 }
 
+const openCollectionInCraft = () => {
+  if (!bookmarksCollectionId.value) return
+  const preference = getCraftLinkPreference()
+  const spaceId = getSpaceId()
+  if (!spaceId) return
+
+  if (preference === 'web') {
+    const webLink = buildCraftWebLink(bookmarksCollectionId.value, spaceId, getShareToken())
+    if (webLink) {
+      window.open(webLink, '_blank')
+    }
+  } else {
+    const appLink = buildCraftAppLink(bookmarksCollectionId.value, spaceId)
+    if (appLink) {
+      window.location.href = appLink
+    }
+  }
+}
+
 const toggleTag = (tag: string) => {
   if (selectedTags.value.has(tag)) {
     selectedTags.value.delete(tag)
@@ -373,9 +397,14 @@ onMounted(() => {
         activeTab: selectedCategory.value || '',
         'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
       }),
-      right: () => h(SubheaderButton, { title: 'Refresh bookmarks', onClick: refreshBookmarks }, {
-        default: () => h(RefreshCw, { size: 16 })
-      })
+      right: () => [
+        h(SubheaderButton, { title: 'Open Bookmarks Collection in Craft', onClick: openCollectionInCraft }, {
+          default: () => h(ExternalLink, { size: 16 })
+        }),
+        h(SubheaderButton, { title: 'Refresh Bookmarks', onClick: refreshBookmarks }, {
+          default: () => h(RefreshCw, { size: 16 })
+        })
+      ]
     })
   }
 })
@@ -398,9 +427,14 @@ onActivated(() => {
         activeTab: selectedCategory.value || '',
         'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
       }),
-      right: () => h(SubheaderButton, { title: 'Refresh bookmarks', onClick: refreshBookmarks }, {
-        default: () => h(RefreshCw, { size: 16 })
-      })
+      right: () => [
+        h(SubheaderButton, { title: 'Open Bookmarks Collection in Craft', onClick: openCollectionInCraft }, {
+          default: () => h(ExternalLink, { size: 16 })
+        }),
+        h(SubheaderButton, { title: 'Refresh Bookmarks', onClick: refreshBookmarks }, {
+          default: () => h(RefreshCw, { size: 16 })
+        })
+      ]
     })
   }
 })
@@ -414,9 +448,14 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
         activeTab: selectedCategory.value || '',
         'onUpdate:activeTab': (tab: string) => { selectedCategory.value = tab }
       }),
-      right: () => h(SubheaderButton, { title: 'Refresh bookmarks', onClick: refreshBookmarks }, {
-        default: () => h(RefreshCw, { size: 16 })
-      })
+      right: () => [
+        h(SubheaderButton, { title: 'Open Bookmarks Collection in Craft', onClick: openCollectionInCraft }, {
+          default: () => h(ExternalLink, { size: 16 })
+        }),
+        h(SubheaderButton, { title: 'Refresh Bookmarks', onClick: refreshBookmarks }, {
+          default: () => h(RefreshCw, { size: 16 })
+        })
+      ]
     })
   } else if (setSubheader) {
     setSubheader(null)
