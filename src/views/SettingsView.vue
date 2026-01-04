@@ -365,6 +365,9 @@ const saveSettings = async (skipAutodiscovery = false) => {
   localStorage.setItem('calendar-urls', JSON.stringify(validUrls))
   setCacheExpiryMinutes(cacheExpiryMinutes.value)
 
+  // Track if spaceId was previously configured
+  const hadSpaceId = !!localStorage.getItem('craft-space-id')
+
   // If spaceId is provided, save it; otherwise try to fetch it
   if (spaceId.value) {
     localStorage.setItem('craft-space-id', spaceId.value)
@@ -381,9 +384,9 @@ const saveSettings = async (skipAutodiscovery = false) => {
     }
   }
 
-  // Auto-trigger autodiscovery if API URL is valid and we don't have all collection IDs
-  // Skip if called from autodiscovery itself to avoid infinite loop
-  if (apiUrl.value && !skipAutodiscovery) {
+  // Auto-trigger autodiscovery only if space ID was not previously configured
+  // This ensures it only runs the first time, not on every save
+  if (apiUrl.value && !skipAutodiscovery && !hadSpaceId) {
     const hasAllIds = requiredCollections.every((col) => collectionIds.value[col.key]?.trim())
     if (!hasAllIds) {
       try {
