@@ -13,7 +13,6 @@ import {
 } from '../utils/craftApi'
 import { useRoute } from 'vue-router'
 import ViewSubheader from '../components/ViewSubheader.vue'
-import ViewTabs from '../components/ViewTabs.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
 
@@ -730,14 +729,6 @@ onMounted(() => {
   // Register subheader
   if (setSubheader && !errorMessage.value && !isLoading.value) {
     setSubheader({
-      default: () =>
-        h(ViewTabs, {
-          tabs: genreTabs.value,
-          activeTab: selectedGenre.value || '',
-          'onUpdate:activeTab': (tab: string) => {
-            selectedGenre.value = tab
-          },
-        }),
       right: () => [
         h(
           SubheaderButton,
@@ -765,34 +756,30 @@ onUnmounted(() => {
 })
 
 // Watch for changes to update subheader
-watch([selectedGenre, genreTabs, errorMessage, isLoading], () => {
-  if (setSubheader && !errorMessage.value && !isLoading.value) {
-    setSubheader({
-      default: () =>
-        h(ViewTabs, {
-          tabs: genreTabs.value,
-          activeTab: selectedGenre.value || '',
-          'onUpdate:activeTab': (tab: string) => {
-            selectedGenre.value = tab
-          },
-        }),
-      right: () => [
-        h(
-          SubheaderButton,
-          { title: 'Open Playlists Collection in Craft', onClick: openCollectionInCraft },
-          {
-            default: () => h(ExternalLink, { size: 16 }),
-          },
-        ),
-        h(
-          SubheaderButton,
-          { title: 'Refresh music library', onClick: refreshData },
-          {
-            default: () => h(RefreshCw, { size: 16 }),
-          },
-        ),
-      ],
-    })
+watch([errorMessage, isLoading], () => {
+  if (setSubheader) {
+    if (errorMessage.value || isLoading.value) {
+      setSubheader(null)
+    } else {
+      setSubheader({
+        right: () => [
+          h(
+            SubheaderButton,
+            { title: 'Open Playlists Collection in Craft', onClick: openCollectionInCraft },
+            {
+              default: () => h(ExternalLink, { size: 16 }),
+            },
+          ),
+          h(
+            SubheaderButton,
+            { title: 'Refresh music library', onClick: refreshData },
+            {
+              default: () => h(RefreshCw, { size: 16 }),
+            },
+          ),
+        ],
+      })
+    }
   }
 })
 
@@ -802,14 +789,6 @@ onActivated(() => {
   // Re-register subheader
   if (setSubheader && !errorMessage.value && !isLoading.value) {
     setSubheader({
-      default: () =>
-        h(ViewTabs, {
-          tabs: genreTabs.value,
-          activeTab: selectedGenre.value || '',
-          'onUpdate:activeTab': (tab: string) => {
-            selectedGenre.value = tab
-          },
-        }),
       right: () => [
         h(
           SubheaderButton,
@@ -876,6 +855,17 @@ watch(
                   placeholder="Search playlists..."
                   class="filter-input"
                 />
+              </div>
+
+              <div class="filter-group">
+                <label class="filter-label">Genre</label>
+                <select v-model="selectedGenre" class="filter-select">
+                  <option value="">All</option>
+                  <option v-for="genre in genres" :key="genre" :value="genre">
+                    {{ genre }}
+                  </option>
+                  <option v-if="hasUnknownGenre" value="Unknown">Unknown</option>
+                </select>
               </div>
 
               <div class="filter-group">
