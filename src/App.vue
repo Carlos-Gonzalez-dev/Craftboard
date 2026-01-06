@@ -29,15 +29,18 @@ import {
 import { useRoute } from 'vue-router'
 import { useWidgetView } from './composables/useWidgetView'
 import { usePanes } from './composables/usePanes'
+import { useActiveTimers } from './composables/useActiveTimers'
 import { useTasksStore } from './stores/tasks'
 import ViewSubheader from './components/ViewSubheader.vue'
 import PaneTabs from './components/PaneTabs.vue'
 import ViewTabs from './components/ViewTabs.vue'
 import SubheaderButton from './components/SubheaderButton.vue'
+import ActiveTimerBar from './components/ActiveTimerBar.vue'
 import { getLatestChangelogDate } from './utils/changelog'
 
 const route = useRoute()
 const tasksStore = useTasksStore()
+const { activeTimers } = useActiveTimers()
 
 // Widget view mode (only for dashboard)
 const { isCompactView } = useWidgetView()
@@ -654,6 +657,11 @@ onUnmounted(() => {
       </div>
     </nav>
 
+    <!-- Active Timers Bar -->
+    <div v-if="activeTimers.length > 0" class="active-timers-container">
+      <ActiveTimerBar v-for="timer in activeTimers" :key="timer.id" :timer="timer" />
+    </div>
+
     <main :class="['content', { 'with-pane-tabs': isDashboard }]">
       <router-view v-slot="{ Component }">
         <keep-alive include="MusicView">
@@ -867,6 +875,16 @@ body.study-mode .navbar {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+/* Active Timers Container */
+.active-timers-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  z-index: 90;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-primary);
 }
 
 .app-footer {
