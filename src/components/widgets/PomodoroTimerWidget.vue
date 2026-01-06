@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Play, Pause, RotateCcw, Coffee } from 'lucide-vue-next'
+import { useRoute } from 'vue-router'
+import { useActiveTimers } from '../../composables/useActiveTimers'
+import { usePanes } from '../../composables/usePanes'
 import type { Widget } from '../../types/widget'
 
 const props = defineProps<{
@@ -10,6 +13,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:data': [data: any]
 }>()
+
+const route = useRoute()
+const { registerTimer, unregisterTimer, updateTimer, getTimer } = useActiveTimers()
+const { activePaneId } = usePanes()
 
 // Timer states
 type TimerType = 'work' | 'shortBreak' | 'longBreak'
@@ -93,6 +100,11 @@ const saveState = () => {
   })
 }
 
+// Get widget display name
+const widgetDisplayName = computed(() => {
+  return props.widget.title || props.widget.name || 'Pomodoro Timer'
+})
+
 // Format time display
 const formattedTime = computed(() => {
   const minutes = Math.floor(timeRemaining.value / 60)
@@ -137,30 +149,55 @@ const startTimer = () => {
   // Save the time remaining at start for timestamp-based calculation
   timeRemainingAtStart.value = timeRemaining.value
   startTimestamp.value = Date.now()
+  
+  // Check if timer already exists (might have been kept alive from previous mount)
+  const existingTimer = getTimer(props.widget.id)
+  if (!existingTimer) {
+    // Register in active timers only if not already registered
+    registerTimer({
+      id: props.widget.id,
+      widgetName: widgetDisplayName.value,
+      timeRemaining: timeRemaining.value,
+      totalDuration: getDefaultDuration(timerType.value),
+      isRunning: true,
+      timerType: timerLabel.value,
+      route: route.path,
+      paneId: activePaneId.value,
+      startTimestamp: startTimestamp.value,
+      timeRemainingAtStart: timeRemainingAtStart.value,
+    })
+  } else {
+    // Timer exists, just update the route and timestamps
+    updateTimer(props.widget.id, {
+      route: route.path,
+      paneId: activePaneId.value,
+      timeRemaining: timeRemaining.value,
+      startTimestamp: startTimestamp.value,
+      timeRemainingAtStart: timeRemainingAtStart.value,
+      isRunning: true,
+    })
+  }
+  
   saveState()
 
   intervalId.value = window.setInterval(() => {
-    // Recalculate based on timestamp to handle tab switching
-    if (startTimestamp.value && timeRemainingAtStart.value !== null) {
-      const elapsed = Math.floor((Date.now() - startTimestamp.value) / 1000)
-      const newTimeRemaining = Math.max(0, timeRemainingAtStart.value - elapsed)
-      timeRemaining.value = newTimeRemaining
+    // Get updated time from global timer
+    const globalTimer = getTimer(props.widget.id)
+    if (globalTimer) {
+      timeRemaining.value = globalTimer.timeRemaining
       
-      if (newTimeRemaining <= 0) {
+      // Check if timer completed
+      if (globalTimer.timeRemaining <= 0 && globalTimer.isRunning === false) {
         completeTimer()
         return
       }
       
-      // Save state every 5 seconds to avoid too many updates
-      if (elapsed % 5 === 0) {
-        saveState()
-      }
-    } else {
-      // Fallback to decrementing if no timestamp (shouldn't happen)
-      if (timeRemaining.value > 0) {
-        timeRemaining.value--
-      } else {
-        completeTimer()
+      // Save state every 5 seconds
+      if (startTimestamp.value) {
+        const elapsed = Math.floor((Date.now() - startTimestamp.value) / 1000)
+        if (elapsed % 5 === 0) {
+          saveState()
+        }
       }
     }
   }, 1000)
@@ -176,6 +213,10 @@ const pauseTimer = () => {
     clearInterval(intervalId.value)
     intervalId.value = null
   }
+  
+  // Unregister from active timers
+  unregisterTimer(props.widget.id)
+  
   saveState()
 }
 
@@ -190,6 +231,10 @@ const resetTimer = () => {
     clearInterval(intervalId.value)
     intervalId.value = null
   }
+  
+  // Unregister from active timers
+  unregisterTimer(props.widget.id)
+  
   timeRemaining.value = getDefaultDuration(timerType.value)
   saveState()
 }
@@ -198,6 +243,16 @@ const resetTimer = () => {
 const completeTimer = () => {
   isRunning.value = false
   isPaused.value = false
+  startTimestamp.value = null
+  timeRemainingAtStart.value = null
+  pausedTimeRemaining.value = null
+  if (intervalId.value) {
+    clearInterval(intervalId.value)
+    intervalId.value = null
+  }
+  
+  // Unregister from active timers
+  unregisterTimer(props.widget.id)
   startTimestamp.value = null
   timeRemainingAtStart.value = null
   pausedTimeRemaining.value = null
@@ -297,8 +352,11 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // Only clear the interval, but keep the timer registered
+  // so it shows in the active timers bar even when switching panes
   if (intervalId.value) {
     clearInterval(intervalId.value)
+    intervalId.value = null
   }
 })
 </script>
