@@ -1201,77 +1201,6 @@ watch(
             </div>
           </Teleport>
 
-          <div
-            v-if="selectedPlaylist"
-            class="player-header"
-            :class="{ 'has-background': currentArtistImage }"
-          >
-            <div
-              v-if="currentArtistImage"
-              class="artist-background"
-              :style="{ backgroundImage: `url(${currentArtistImage})` }"
-            ></div>
-
-            <div class="player-info">
-              <div class="player-info-content">
-                <img
-                  v-if="currentArtistImage"
-                  :src="currentArtistImage"
-                  :alt="selectedPlaylist.properties.artist?.relations?.[0]?.title"
-                  class="artist-image"
-                />
-                <div class="player-text">
-                  <h2 class="playlist-name">{{ selectedPlaylist.title }}</h2>
-                  <div class="playlist-meta">
-                    <span
-                      v-if="selectedPlaylist.properties.genre?.relations?.[0]?.title"
-                      class="meta-item"
-                    >
-                      <svg class="meta-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-                        />
-                      </svg>
-                      {{ selectedPlaylist.properties.genre.relations[0].title }}
-                    </span>
-                    <span v-if="selectedPlaylist.properties.artist" class="meta-item">
-                      <svg class="meta-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                        />
-                      </svg>
-                      {{ selectedPlaylist.properties.artist?.relations?.[0]?.title }}
-                    </span>
-                    <span v-if="selectedPlaylist.properties.tags?.length > 0" class="meta-item">
-                      <svg class="meta-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                        />
-                      </svg>
-                      <span class="meta-tags">
-                        <span
-                          v-for="tag in selectedPlaylist.properties.tags"
-                          :key="tag"
-                          class="meta-tag"
-                        >
-                          {{ tag }}
-                        </span>
-                      </span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
           <div class="player-content">
             <div v-if="selectedPlaylist" class="player-display-wrapper" id="music-view-player-target">
               <!-- Player is rendered here via teleport from global container -->
@@ -1316,22 +1245,28 @@ watch(
   width: 100%;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
-  overflow-y: auto;
-  max-height: 45vh;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 2;
+  min-height: 0;
 }
 
 @media (min-width: 768px) {
   .playlists-sidebar {
     width: 256px;
-    max-height: none;
     border-bottom: none;
     border-right: 1px solid var(--border-primary);
+    flex: none;
   }
 }
 
 .sidebar-content {
   padding: 12px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .sidebar-header {
@@ -1557,6 +1492,9 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .playlist-item {
@@ -1655,138 +1593,6 @@ watch(
   overflow: hidden;
 }
 
-.player-header {
-  position: relative;
-  background: transparent;
-  border-bottom: 1px solid var(--border-primary);
-  padding: 16px;
-  overflow: hidden;
-}
-
-.artist-background {
-  position: absolute;
-  inset: 0;
-  background-size: cover;
-  background-position: center;
-  opacity: 0.2;
-}
-
-.artist-background::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, var(--bg-secondary) 0%, var(--bg-secondary) 100%);
-}
-
-.player-info {
-  position: relative;
-  z-index: 10;
-}
-
-.player-info-content {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.artist-image {
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
-  object-fit: cover;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  flex-shrink: 0;
-}
-
-@media (min-width: 768px) {
-  .artist-image {
-    width: 80px;
-    height: 80px;
-  }
-}
-
-.player-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.playlist-name {
-  font-size: 20px;
-  font-weight: 700;
-  margin: 0 0 8px 0;
-}
-
-@media (min-width: 768px) {
-  .playlist-name {
-    font-size: 24px;
-  }
-}
-
-.playlist-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  color: var(--text-tertiary);
-  font-size: 14px;
-}
-
-@media (min-width: 768px) {
-  .playlist-meta {
-    gap: 16px;
-    font-size: 16px;
-  }
-}
-
-.meta-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-@media (min-width: 768px) {
-  .meta-item {
-    gap: 8px;
-  }
-}
-
-.meta-icon {
-  width: 16px;
-  height: 16px;
-}
-
-@media (min-width: 768px) {
-  .meta-icon {
-    width: 20px;
-    height: 20px;
-  }
-}
-
-.meta-tags {
-  display: flex;
-  gap: 6px;
-}
-
-.meta-tag {
-  padding: 4px 8px;
-  background: var(--bg-tertiary);
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.player-placeholder {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-tertiary);
-  position: relative;
-  z-index: 10;
-}
-
-@media (min-width: 768px) {
-  .player-placeholder {
-    font-size: 24px;
-  }
-}
-
 .player-content {
   flex: 1;
   display: flex;
@@ -1799,12 +1605,6 @@ watch(
     linear-gradient(var(--bg-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
   background-size: 40px 40px;
-}
-
-@media (max-width: 767px) {
-  .player-content {
-    padding-top: 150px;
-  }
 }
 
 .player-wrapper {
