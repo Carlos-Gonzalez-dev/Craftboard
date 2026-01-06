@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, inject, h, watch } from 'vue'
-import { Clock, RefreshCw, ExternalLink, Plus, X } from 'lucide-vue-next'
+import { Clock, RefreshCw, ExternalLink, Plus, X, Search } from 'lucide-vue-next'
 import { getApiUrl, openCraftLink, getCacheExpiryMs } from '../utils/craftApi'
 import { useRoute, useRouter } from 'vue-router'
 import ViewSubheader from '../components/ViewSubheader.vue'
@@ -32,7 +32,8 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 const totalApiCalls = ref(0)
 const completedApiCalls = ref(0)
-const selectedTag = ref<string>('')
+const searchQuery = ref('')
+const selectedTags = ref<Set<string>>(new Set())
 const showAddTagModal = ref(false)
 const newTag = ref('')
 
@@ -79,37 +80,66 @@ const addTag = async () => {
 }
 
 const removeTag = async (tag: string) => {
-  const wasSelected = selectedTag.value === tag
   savedTags.value = savedTags.value.filter((t) => t !== tag)
   saveTags()
-  if (wasSelected) {
-    selectedTag.value = ''
-    await loadLogs()
-  }
+  selectedTags.value.delete(tag)
+  selectedTags.value = new Set(selectedTags.value)
+  await loadLogs()
 }
 
-// Initialize selectedTag from URL
-const initializeSelectedTag = () => {
-  const tagFromQuery = route.query.tag as string | undefined
-  if (tagFromQuery !== undefined) {
-    selectedTag.value = tagFromQuery
-  } else if (savedTags.value.length > 0) {
-    selectedTag.value = ''
-  }
-}
-
-// Update URL when tag changes and reload logs
-watch(selectedTag, (newTag) => {
-  const query = newTag ? { tag: newTag } : {}
-  router.replace({ query })
-  loadLogs()
+// Get all unique tags from logs
+const allTags = computed(() => {
+  const tagsSet = new Set<string>()
+  logs.value.forEach((log) => {
+    log.tags.forEach((tag) => tagsSet.add(tag))
+  })
+  return Array.from(tagsSet).sort()
 })
+
+// Filter logs by search and tags
+const filteredLogs = computed(() => {
+  let items = logs.value
+
+  // Apply search filter
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase()
+    items = items.filter(
+      (item) =>
+        item.markdown.toLowerCase().includes(query) ||
+        item.documentTitle.toLowerCase().includes(query) ||
+        item.tags.some((tag) => tag.toLowerCase().includes(query)),
+    )
+  }
+
+  // Apply tag filters (must have ALL selected tags)
+  if (selectedTags.value.size > 0) {
+    items = items.filter((item) => {
+      if (!item.tags || item.tags.length === 0) return false
+      return Array.from(selectedTags.value).every((tag) => item.tags.includes(tag))
+    })
+  }
+
+  return items
+})
+
+const toggleTag = (tag: string) => {
+  if (selectedTags.value.has(tag)) {
+    selectedTags.value.delete(tag)
+  } else {
+    selectedTags.value.add(tag)
+  }
+  selectedTags.value = new Set(selectedTags.value)
+}
+
+const clearFilters = () => {
+  searchQuery.value = ''
+  selectedTags.value = new Set()
+}
 
 // Cache functions
 const getCacheKey = () => {
-  const tagKey = selectedTag.value || 'all'
   const tagsHash = savedTags.value.join('-')
-  return `${CACHE_PREFIX}${tagKey}-${tagsHash}`
+  return `${CACHE_PREFIX}${tagsHash}`
 }
 
 const getCachedData = () => {
@@ -170,9 +200,9 @@ const extractMatchingTags = (markdown: string, pattern: string): string[] => {
   return [...new Set(tags)]
 }
 
-// Load logs for selected tag
+// Load logs for all saved tags
 const loadLogs = async (forceRefresh = false) => {
-  if (!selectedTag.value && savedTags.value.length === 0) {
+  if (savedTags.value.length === 0) {
     logs.value = []
     return
   }
@@ -203,16 +233,9 @@ const loadLogs = async (forceRefresh = false) => {
       throw new Error('Craft API token not configured')
     }
 
-    // Build regex pattern based on selected tag
-    let regexPattern: string
-    if (selectedTag.value === '') {
-      // All tags - search for any of the saved tags
-      const patterns = savedTags.value.map((tag) => `#${tag}(?:\\/[\\w-]+)?`).join('|')
-      regexPattern = patterns || '#[\\w-]+(?:\\/[\\w-]+)?'
-    } else {
-      // Specific tag
-      regexPattern = `#${selectedTag.value}(?:\\/[\\w-]+)?`
-    }
+    // Build regex pattern for all saved tags
+    const patterns = savedTags.value.map((tag) => `#${tag}(?:\/[\w-]+)?`).join('|')
+    const regexPattern = patterns || '#[\w-]+(?:\/[\w-]+)?'
 
     const response = await fetch(
       `${apiUrl}/documents/search?regexps=${encodeURIComponent(regexPattern)}&fetchMetadata=true`,
@@ -238,20 +261,9 @@ const loadLogs = async (forceRefresh = false) => {
     const logEntries: LogEntry[] = []
 
     for (const item of items) {
-      const tags =
-        selectedTag.value === ''
-          ? extractMatchingTags(item.markdown || '', '')
-          : extractMatchingTags(item.markdown || '', selectedTag.value)
+      const tags = extractMatchingTags(item.markdown || '', '')
 
       if (tags.length === 0) continue
-
-      // Filter by selected tag if not "All"
-      if (
-        selectedTag.value &&
-        !tags.some((t) => t === selectedTag.value || t.startsWith(selectedTag.value + '/'))
-      ) {
-        continue
-      }
 
       const entry: LogEntry = {
         documentId: item.documentId,
@@ -329,9 +341,25 @@ const openLog = async (entry: LogEntry) => {
 }
 
 const filterByTag = (tag: string) => {
-  // Extract base tag (before any slash)
-  const baseTag = tag.split('/')[0]
-  selectedTag.value = baseTag
+  // Toggle tag in filter
+  toggleTag(tag)
+}
+
+// Generate a unique color for a tag based on its text
+const getTagColor = (tag: string) => {
+  // Simple hash function to get a consistent number from string
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash)
+  }
+
+  // Convert hash to hue (0-360)
+  const hue = Math.abs(hash % 360)
+
+  // Return CSS custom properties that work with both themes
+  return {
+    '--tag-hue': hue,
+  }
 }
 
 // Tabs for tags
@@ -342,14 +370,8 @@ const tabs = computed(() => {
   ]
 })
 
-// Watch selectedTag to reload
-watch(selectedTag, () => {
-  loadLogs()
-})
-
 onMounted(() => {
   loadTags()
-  initializeSelectedTag()
   loadLogs()
 
   // Register refresh function
@@ -357,14 +379,6 @@ onMounted(() => {
 
   // Set subheader
   setSubheader?.({
-    default: () =>
-      h(ViewTabs, {
-        tabs: tabs.value,
-        selectedTab: selectedTag.value,
-        'onUpdate:selectedTab': (tab: string) => {
-          selectedTag.value = tab
-        },
-      }),
     right: () => [
       h(
         SubheaderButton,
@@ -411,70 +425,124 @@ onMounted(() => {
       <p class="hint">Click "Add Tag" to start tracking tags</p>
     </div>
 
-    <div
-      v-if="!isLoading && !error && savedTags.length > 0 && logs.length === 0"
-      class="empty-state"
-    >
-      <Clock :size="48" />
-      <p>No documents found</p>
-      <p class="hint">
-        No documents with {{ selectedTag ? `#${selectedTag}` : 'these tags' }} were found
-      </p>
-    </div>
-
-    <div v-if="!isLoading && !error && logs.length > 0" class="table-container">
-      <table class="logs-table">
-        <thead>
-          <tr>
-            <th class="col-created">Created</th>
-            <th class="col-modified">Modified</th>
-            <th class="col-tags">Tags</th>
-            <th class="col-content">Content</th>
-            <th class="col-action"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(entry, index) in logs"
-            :key="`${entry.documentId}-${index}`"
-            class="log-row"
-            @click="openLog(entry)"
+    <template v-else>
+      <div class="tags-content">
+        <div class="tags-container">
+          <div
+            v-if="logs.length > 0 || searchQuery || selectedTags.size > 0"
+            class="tags-tab-content"
           >
-            <td class="col-created">
-              <div class="date-cell">
-                <div class="date">{{ formatDate(entry.createdAt) }}</div>
-                <div class="time">{{ formatTime(entry.createdAt) }}</div>
-              </div>
-            </td>
-            <td class="col-modified">
-              <div class="date-cell">
-                <div class="date">{{ formatDate(entry.lastModifiedAt) }}</div>
-                <div class="time">{{ formatTime(entry.lastModifiedAt) }}</div>
-              </div>
-            </td>
-            <td class="col-tags">
-              <div class="tags-cell">
-                <span
-                  v-for="tag in entry.tags"
-                  :key="tag"
-                  class="tag clickable-tag"
-                  @click.stop="filterByTag(tag)"
-                  :title="`Filter by #${tag}`"
+            <!-- Search and Filters -->
+            <div class="tags-filters">
+              <div class="search-container">
+                <Search :size="18" class="search-icon" />
+                <input
+                  v-model="searchQuery"
+                  type="text"
+                  placeholder="Search tags..."
+                  class="search-input"
+                />
+                <button
+                  v-if="searchQuery"
+                  @click="searchQuery = ''"
+                  class="clear-search-button"
+                  title="Clear search"
                 >
-                  #{{ tag }}
-                </span>
+                  <X :size="16" />
+                </button>
+                <button
+                  @click="clearFilters"
+                  class="clear-filters-icon-button"
+                  :disabled="selectedTags.size === 0 && !searchQuery"
+                  title="Clear filters"
+                >
+                  <X :size="18" />
+                </button>
               </div>
-            </td>
-            <td class="col-content">
-              <div class="content-cell">{{ entry.markdown }}</div>
-            </td>
-            <td class="col-action">
-              <ExternalLink :size="16" class="action-icon" />
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+
+              <div v-if="allTags.length > 0" class="tags-filter">
+                <div class="tags-list">
+                  <button
+                    v-for="tag in allTags"
+                    :key="tag"
+                    @click="toggleTag(tag)"
+                    :class="['tag-filter-button', { active: selectedTags.has(tag) }]"
+                    :style="getTagColor(tag)"
+                  >
+                    #{{ tag }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="filteredLogs.length === 0" class="no-results">
+              <p>No documents found matching your filters.</p>
+            </div>
+
+            <div v-else class="table-container">
+              <table class="logs-table">
+                <thead>
+                  <tr>
+                    <th class="col-created">Created</th>
+                    <th class="col-modified">Modified</th>
+                    <th class="col-tags">Tags</th>
+                    <th class="col-content">Content</th>
+                    <th class="col-action"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(entry, index) in filteredLogs"
+                    :key="`${entry.documentId}-${index}`"
+                    class="log-row"
+                    @click="openLog(entry)"
+                  >
+                    <td class="col-created">
+                      <div class="date-cell">
+                        <div class="date">{{ formatDate(entry.createdAt) }}</div>
+                        <div class="time">{{ formatTime(entry.createdAt) }}</div>
+                      </div>
+                    </td>
+                    <td class="col-modified">
+                      <div class="date-cell">
+                        <div class="date">{{ formatDate(entry.lastModifiedAt) }}</div>
+                        <div class="time">{{ formatTime(entry.lastModifiedAt) }}</div>
+                      </div>
+                    </td>
+                    <td class="col-tags">
+                      <div class="tags-cell">
+                        <span
+                          v-for="tag in entry.tags"
+                          :key="tag"
+                          class="tag-badge"
+                          :style="getTagColor(tag)"
+                          @click.stop="filterByTag(tag)"
+                          :title="`Filter by #${tag}`"
+                        >
+                          #{{ tag }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="col-content">
+                      <div class="content-cell">{{ entry.markdown }}</div>
+                    </td>
+                    <td class="col-action">
+                      <ExternalLink :size="16" class="action-icon" />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div v-else-if="!isLoading && logs.length === 0" class="empty-state">
+            <Clock :size="48" />
+            <p>No documents found</p>
+            <p class="hint">No documents with these tags were found</p>
+          </div>
+        </div>
+      </div>
+    </template>
 
     <!-- Add Tag Modal -->
     <div v-if="showAddTagModal" class="modal-overlay" @click="showAddTagModal = false">
@@ -553,6 +621,194 @@ onMounted(() => {
 .empty-state .hint {
   font-size: 14px;
   opacity: 0.7;
+}
+
+.tags-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 20px;
+}
+
+.tags-content:has(.tags-container) {
+  padding: 8px 16px;
+}
+
+.tags-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+}
+
+.tags-tab-content {
+  flex: 1;
+  padding-top: 0;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tags-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.search-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.search-input {
+  flex: 1;
+  padding: 10px 40px 10px 40px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--btn-primary-bg);
+  box-shadow: 0 0 0 3px rgba(var(--btn-primary-bg-rgb, 0, 0, 0), 0.1);
+}
+
+.clear-search-button {
+  position: absolute;
+  right: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  transition: all 0.2s ease;
+}
+
+.clear-search-button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.clear-filters-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  transition: all 0.2s ease;
+}
+
+.clear-filters-icon-button:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-secondary);
+}
+
+.clear-filters-icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tags-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-filter-button {
+  padding: 6px 12px;
+  background: hsl(var(--tag-hue, 220), 70%, 95%);
+  border: 1px solid hsl(var(--tag-hue, 220), 60%, 75%);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--tag-hue, 220), 70%, 35%);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+[data-theme='dark'] .tag-filter-button {
+  background: hsl(var(--tag-hue, 220), 60%, 20%);
+  border-color: hsl(var(--tag-hue, 220), 50%, 35%);
+  color: hsl(var(--tag-hue, 220), 70%, 75%);
+}
+
+.tag-filter-button:hover {
+  background: hsl(var(--tag-hue, 220), 70%, 88%);
+  border-color: hsl(var(--tag-hue, 220), 60%, 65%);
+  color: hsl(var(--tag-hue, 220), 70%, 30%);
+}
+
+[data-theme='dark'] .tag-filter-button:hover {
+  background: hsl(var(--tag-hue, 220), 60%, 25%);
+  border-color: hsl(var(--tag-hue, 220), 50%, 45%);
+  color: hsl(var(--tag-hue, 220), 70%, 80%);
+}
+
+.tag-filter-button.active {
+  background: hsl(var(--tag-hue, 220), 70%, 50%);
+  border-color: hsl(var(--tag-hue, 220), 70%, 50%);
+  color: white;
+}
+
+[data-theme='dark'] .tag-filter-button.active {
+  background: hsl(var(--tag-hue, 220), 65%, 45%);
+  border-color: hsl(var(--tag-hue, 220), 65%, 45%);
+  color: white;
+}
+
+.tag-filter-button.active:hover {
+  background: hsl(var(--tag-hue, 220), 70%, 45%);
+  border-color: hsl(var(--tag-hue, 220), 70%, 45%);
+}
+
+[data-theme='dark'] .tag-filter-button.active:hover {
+  background: hsl(var(--tag-hue, 220), 65%, 50%);
+  border-color: hsl(var(--tag-hue, 220), 65%, 50%);
+}
+
+.no-results {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
 }
 
 .table-container {
@@ -653,20 +909,32 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-.tag {
+.tag-badge {
   padding: 2px 6px;
-  background: var(--btn-primary-bg);
+  background: hsl(var(--tag-hue, 220), 70%, 50%);
+  border: 1px solid hsl(var(--tag-hue, 220), 70%, 50%);
   color: white;
   border-radius: 3px;
   font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: all 0.2s ease;
 }
 
-.tag:hover {
-  opacity: 0.8;
+[data-theme='dark'] .tag-badge {
+  background: hsl(var(--tag-hue, 220), 65%, 45%);
+  border-color: hsl(var(--tag-hue, 220), 65%, 45%);
+}
+
+.tag-badge:hover {
+  background: hsl(var(--tag-hue, 220), 70%, 45%);
+  border-color: hsl(var(--tag-hue, 220), 70%, 45%);
+}
+
+[data-theme='dark'] .tag-badge:hover {
+  background: hsl(var(--tag-hue, 220), 65%, 50%);
+  border-color: hsl(var(--tag-hue, 220), 65%, 50%);
 }
 
 .content-cell {
