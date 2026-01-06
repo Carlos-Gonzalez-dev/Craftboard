@@ -4,7 +4,7 @@ defineOptions({
 })
 
 import { ref, computed, onMounted, onUnmounted, watch, h, onActivated, inject } from 'vue'
-import { RefreshCw, Music as MusicIcon, ExternalLink, GripVertical, X, ChevronDown, ChevronUp } from 'lucide-vue-next'
+import { RefreshCw, Music as MusicIcon, ExternalLink, GripVertical, X, ChevronDown, ChevronUp, Maximize, Minimize } from 'lucide-vue-next'
 import {
   getApiUrl,
   getApiToken,
@@ -643,8 +643,14 @@ const navigateToMusic = () => {
 
 // Floating player state
 const isCollapsed = ref(false)
+const isFullscreen = ref(false)
 const playerPosition = ref({ x: 0, y: 0 })
 const positionBeforeCollapse = ref({ x: 0, y: 0 })
+const stateBeforeFullscreen = ref({
+  position: { x: 0, y: 0 },
+  size: { width: 350, height: 250 },
+  moved: false
+})
 const playerSize = ref({ width: 350, height: 250 })
 const isDragging = ref(false)
 const isResizing = ref(false)
@@ -682,6 +688,28 @@ const toggleCollapse = () => {
     playerPosition.value = { ...positionBeforeCollapse.value }
   }
   isCollapsed.value = !isCollapsed.value
+}
+
+const toggleFullscreen = () => {
+  if (!isFullscreen.value) {
+    // Entering fullscreen - save current state
+    stateBeforeFullscreen.value = {
+      position: { ...playerPosition.value },
+      size: { ...playerSize.value },
+      moved: userHasMoved.value
+    }
+    // Set fullscreen dimensions
+    playerPosition.value = { x: 0, y: 0 }
+    playerSize.value = { width: window.innerWidth, height: window.innerHeight }
+    userHasMoved.value = true
+    isFullscreen.value = true
+  } else {
+    // Exiting fullscreen - restore previous state
+    playerPosition.value = { ...stateBeforeFullscreen.value.position }
+    playerSize.value = { ...stateBeforeFullscreen.value.size }
+    userHasMoved.value = stateBeforeFullscreen.value.moved
+    isFullscreen.value = false
+  }
 }
 
 const startDrag = (e: MouseEvent) => {
@@ -1094,6 +1122,7 @@ watch(
                 'is-collapsed': isCollapsed,
                 'is-dragging': isDragging,
                 'is-resizing': isResizing,
+                'is-fullscreen': isFullscreen,
                 'user-positioned': userHasMoved
               }"
               :style="{
@@ -1107,7 +1136,13 @@ watch(
                   <GripVertical :size="14" />
                 </div>
                 <div class="floating-player-info">
-                  <MusicIcon :size="16" class="floating-icon" />
+                  <img 
+                    v-if="currentArtistImage" 
+                    :src="currentArtistImage" 
+                    :alt="selectedPlaylist.properties?.artist?.relations?.[0]?.title"
+                    class="floating-artist-image"
+                  />
+                  <MusicIcon v-else :size="16" class="floating-icon" />
                   <div class="floating-text">
                     <div class="floating-title">{{ selectedPlaylist.title }}</div>
                     <div class="floating-artist" v-if="selectedPlaylist.properties?.artist?.relations?.[0]?.title">
@@ -1117,6 +1152,15 @@ watch(
                 </div>
                 <div class="header-buttons">
                   <button 
+                    @click.stop="toggleFullscreen" 
+                    class="header-button"
+                    :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'"
+                  >
+                    <Minimize v-if="isFullscreen" :size="14" />
+                    <Maximize v-else :size="14" />
+                  </button>
+                  <button 
+                    v-if="!isFullscreen"
                     @click.stop="toggleCollapse" 
                     class="header-button"
                     :title="isCollapsed ? 'Expand player' : 'Collapse player'"
@@ -1125,6 +1169,7 @@ watch(
                     <ChevronDown v-else :size="14" />
                   </button>
                   <button 
+                    v-if="!isFullscreen"
                     @click.stop="navigateToMusic" 
                     class="header-button"
                     title="Go to Music view"
@@ -1132,6 +1177,7 @@ watch(
                     <ExternalLink :size="14" />
                   </button>
                   <button 
+                    v-if="!isFullscreen"
                     @click.stop="selectedPlaylist = null" 
                     class="header-button"
                     title="Close player"
@@ -1811,6 +1857,17 @@ watch(
   max-width: calc(100vw - 40px) !important;
 }
 
+.global-player-wrapper.is-fullscreen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  transform: none !important;
+  border-radius: 0 !important;
+}
+
 .global-player-wrapper.user-positioned {
   position: fixed;
   bottom: auto !important;
@@ -1863,6 +1920,14 @@ watch(
 
 .floating-icon {
   color: var(--btn-primary-bg);
+  flex-shrink: 0;
+}
+
+.floating-artist-image {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
   flex-shrink: 0;
 }
 

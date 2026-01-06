@@ -8,6 +8,7 @@ export const changelog: ChangelogEntry[] = [
     date: '2026-01-06',
     changes: [
       'Dragging is now only possible using the widget header to prevent moving widgets accidentally',
+      'Improved the music player. Now it works even when changing views as a floating music player',
     ],
   },
   {
