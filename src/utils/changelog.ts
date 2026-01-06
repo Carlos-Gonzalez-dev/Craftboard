@@ -9,6 +9,8 @@ export const changelog: ChangelogEntry[] = [
     changes: [
       'Improved update app button on mobile devices',
       'Added "All" buttons on Bookmark and RSS views to see all items without filters',
+      'Added TagView. You can now add tags to localize your tagged notes (I use this to log things)',
+      'Add ability to hide task tab and tags tab',
     ],
   },
   {

@@ -23,6 +23,7 @@ const showGraphTab = ref(true)
 const showBookmarksTab = ref(true)
 const showRSSTab = ref(true)
 const showTasksTab = ref(true)
+const showTagsTab = ref(true)
 const cacheExpiryMinutes = ref(60)
 const calendarUrls = ref<string[]>([''])
 const storageSize = ref(0)
@@ -360,6 +361,7 @@ const saveSettings = async (skipAutodiscovery = false) => {
   localStorage.setItem('show-bookmarks-tab', String(showBookmarksTab.value))
   localStorage.setItem('show-rss-tab', String(showRSSTab.value))
   localStorage.setItem('show-tasks-tab', String(showTasksTab.value))
+  localStorage.setItem('show-tags-tab', String(showTagsTab.value))
   // Save calendar URLs (filter out empty strings)
   const validUrls = calendarUrls.value.filter((url) => url.trim() !== '')
   localStorage.setItem('calendar-urls', JSON.stringify(validUrls))
@@ -425,6 +427,8 @@ const savedShowRSS = localStorage.getItem('show-rss-tab')
 showRSSTab.value = savedShowRSS === null ? true : savedShowRSS === 'true'
 const savedShowTasks = localStorage.getItem('show-tasks-tab')
 showTasksTab.value = savedShowTasks === null ? true : savedShowTasks === 'true'
+const savedShowTags = localStorage.getItem('show-tags-tab')
+showTagsTab.value = savedShowTags === null ? true : savedShowTags === 'true'
 
 // Load collection IDs
 requiredCollections.forEach((col) => {
@@ -525,6 +529,19 @@ function importDataFromFile(event: Event) {
             <div class="form-group">
               <label class="checkbox-label">
                 <input
+                  id="show-tasks-tab"
+                  v-model="showTasksTab"
+                  type="checkbox"
+                  class="checkbox"
+                />
+                <span>Show Tasks Tab</span>
+              </label>
+              <p class="field-hint">Toggle visibility of the Tasks navigation tab.</p>
+            </div>
+
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input
                   id="show-flashcards-tab"
                   v-model="showFlashcardsTab"
                   type="checkbox"
@@ -580,6 +597,14 @@ function importDataFromFile(event: Event) {
                 <span>Show RSS Tab</span>
               </label>
               <p class="field-hint">Toggle visibility of the RSS navigation tab.</p>
+            </div>
+
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input id="show-tags-tab" v-model="showTagsTab" type="checkbox" class="checkbox" />
+                <span>Show Tags Tab</span>
+              </label>
+              <p class="field-hint">Toggle visibility of the Tags navigation tab.</p>
             </div>
 
             <div class="form-group">
