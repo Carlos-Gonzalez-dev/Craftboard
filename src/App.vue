@@ -25,6 +25,7 @@ import {
   Menu,
   HelpCircle,
   Download,
+  Clock,
 } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useWidgetView } from './composables/useWidgetView'
@@ -62,6 +63,7 @@ const currentViewName = computed(() => {
     graph: 'Graph',
     bookmarks: 'Bookmarks',
     rss: 'RSS',
+    tags: 'Tags',
     settings: 'Settings',
   }
 
@@ -143,6 +145,7 @@ const showGraphTab = ref(true)
 const showBookmarksTab = ref(true)
 const showRSSTab = ref(true)
 const showTasksTab = ref(true)
+const showTagsTab = ref(true)
 
 // Navigation items configuration
 const navigationItems = computed(() => {
@@ -172,6 +175,7 @@ const navigationItems = computed(() => {
       badge: null,
     },
     { path: '/rss', name: 'RSS', icon: Rss, show: showRSSTab.value, badge: null },
+    { path: '/tags', name: 'Tags', icon: Clock, show: showTagsTab.value, badge: null },
   ]
   return items.filter((item) => item.show)
 })

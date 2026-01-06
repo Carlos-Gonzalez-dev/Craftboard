@@ -7,6 +7,7 @@ import GraphView from '../views/GraphView.vue'
 import BookmarksView from '../views/BookmarksView.vue'
 import RSSView from '../views/RSSView.vue'
 import TasksView from '../views/TasksView.vue'
+import TagsView from '../views/TagsView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -45,6 +46,11 @@ const router = createRouter({
       path: '/tasks',
       name: 'tasks',
       component: TasksView,
+    },
+    {
+      path: '/tags',
+      name: 'tags',
+      component: TagsView,
     },
     {
       path: '/settings',
