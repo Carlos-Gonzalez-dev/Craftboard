@@ -654,8 +654,8 @@ onUnmounted(() => {
 
     <main :class="['content', { 'with-pane-tabs': isDashboard }]">
       <router-view v-slot="{ Component }">
-        <keep-alive>
-          <component :is="Component" />
+        <keep-alive include="MusicView">
+          <component :is="Component" :key="route.name" />
         </keep-alive>
       </router-view>
     </main>
@@ -688,6 +688,13 @@ onUnmounted(() => {
         </a>
       </div>
     </footer>
+
+    <!-- Global Music Player Container -->
+    <div
+      id="global-music-player"
+      class="global-music-player"
+      :class="{ 'route-music': route.name === 'music' }"
+    ></div>
 
     <!-- New Pane Modal -->
     <div v-if="showPaneNameModal" class="modal-overlay" @click.self="showPaneNameModal = false">
@@ -869,6 +876,32 @@ body.study-mode .navbar {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.global-music-player {
+  position: fixed;
+  bottom: 48px;
+  right: 0;
+  width: 350px;
+  max-width: calc(100vw - 40px);
+  z-index: 1000;
+  transition: all 0.3s ease;
+}
+
+.global-music-player .user-positioned {
+  bottom: auto;
+  right: auto;
+  transition: none;
+}
+
+.global-music-player:not(:empty) {
+  background: var(--bg-secondary);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.global-music-player:not(:empty):hover {
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
 }
 
 .footer-left {

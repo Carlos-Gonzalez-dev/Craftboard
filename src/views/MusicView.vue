@@ -1,6 +1,10 @@
 <script setup lang="ts">
+defineOptions({
+  name: 'MusicView'
+})
+
 import { ref, computed, onMounted, onUnmounted, watch, h, onActivated, inject } from 'vue'
-import { RefreshCw, Music as MusicIcon, ExternalLink } from 'lucide-vue-next'
+import { RefreshCw, Music as MusicIcon, ExternalLink, GripVertical, X, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import {
   getApiUrl,
   getApiToken,
@@ -67,6 +71,8 @@ const YoutubePlayer = {
     const isPlaylist = ref(false)
     const playerError = ref(false)
     const isRetrying = ref(false)
+    const playerWidth = ref(1280)
+    const playerHeight = ref(720)
     let player: any = null
     let retryCount = 0
     const maxRetries = 3
@@ -168,6 +174,16 @@ const YoutubePlayer = {
       },
     )
 
+    onUnmounted(() => {
+      if (player && typeof player.destroy === 'function') {
+        try {
+          player.destroy()
+        } catch (e) {
+          console.warn('Error destroying player on unmount:', e)
+        }
+      }
+    })
+
     const loadYouTubeAPI = () => {
       if (!(window as any).YT) {
         const tag = document.createElement('script')
@@ -192,17 +208,14 @@ const YoutubePlayer = {
           return
         }
 
-        // Calculate height based on container width (16:9 aspect ratio)
-        // Use offsetWidth or getComputedStyle to get actual width
-        let containerWidth = container.offsetWidth
-        if (!containerWidth || containerWidth === 0) {
-          const computedStyle = window.getComputedStyle(container)
-          containerWidth = parseFloat(computedStyle.width) || 800
-        }
-        const calculatedHeight = Math.max(400, Math.round(containerWidth * 0.5625)) // 16:9 ratio, min 400px
+        // Get current container dimensions
+        const containerWidth = container.offsetWidth || 1280
+        const containerHeight = Math.round(containerWidth * 0.5625)
+        playerWidth.value = containerWidth
+        playerHeight.value = containerHeight
 
         const config: any = {
-          height: calculatedHeight,
+          height: containerHeight,
           width: containerWidth,
           playerVars: {
             autoplay: 1,
@@ -213,9 +226,11 @@ const YoutubePlayer = {
               console.error('YouTube player error:', event.data)
               playerError.value = true
             },
-            onReady: () => {
+            onReady: (event: any) => {
               retryCount = 0
               playerError.value = false
+              // Store player instance for external access
+              ;(window as any)[`ytplayer_${playerId.value}`] = player
             },
           },
         }
@@ -620,6 +635,149 @@ const selectRandomPlaylist = () => {
   }
 }
 
+const navigateToMusic = () => {
+  if (route.name !== 'music') {
+    window.location.hash = '#/music'
+  }
+}
+
+// Floating player state
+const isCollapsed = ref(false)
+const playerPosition = ref({ x: 0, y: 0 })
+const savedPosition = ref({ x: 0, y: 0 }) // Save position before going to music view
+const positionBeforeCollapse = ref({ x: 0, y: 0 }) // Save position before collapsing
+const playerSize = ref({ width: 350, height: 250 })
+const isDragging = ref(false)
+const isResizing = ref(false)
+const dragStart = ref({ x: 0, y: 0 })
+const userHasMoved = ref(false)
+
+// Watch for player size changes and update YouTube iframe
+watch(
+  () => playerSize.value,
+  (newSize) => {
+    if (route.name !== 'music' && selectedPlaylist.value) {
+      // Find and resize YouTube player
+      const playerWrapper = document.querySelector('.global-player-wrapper')
+      if (playerWrapper) {
+        const playerId = playerWrapper.querySelector('.youtube-player')?.id
+        if (playerId) {
+          const player = (window as any)[`ytplayer_${playerId}`]
+          if (player && typeof player.setSize === 'function') {
+            const height = Math.round(newSize.width * 0.5625) // 16:9 ratio
+            player.setSize(newSize.width, height)
+          }
+        }
+      }
+    }
+  },
+  { deep: true }
+)
+
+const toggleCollapse = () => {
+  if (!isCollapsed.value) {
+    // Collapsing - save current position and move to bottom right
+    positionBeforeCollapse.value = { ...playerPosition.value }
+    // Move to bottom right corner (will be positioned by CSS when not user-positioned)
+    playerPosition.value = { x: 0, y: 0 }
+    userHasMoved.value = false // Let CSS position it
+  } else {
+    // Expanding - restore previous position
+    playerPosition.value = { ...positionBeforeCollapse.value }
+    if (positionBeforeCollapse.value.x !== 0 || positionBeforeCollapse.value.y !== 0) {
+      userHasMoved.value = true
+    }
+  }
+  isCollapsed.value = !isCollapsed.value
+}
+
+const startDrag = (e: MouseEvent) => {
+  if (route.name === 'music') return // Don't allow dragging on music view
+  isDragging.value = true
+  dragStart.value = {
+    x: e.clientX - playerPosition.value.x,
+    y: e.clientY - playerPosition.value.y
+  }
+  userHasMoved.value = true
+}
+
+const onDrag = (e: MouseEvent) => {
+  if (!isDragging.value) return
+  playerPosition.value = {
+    x: e.clientX - dragStart.value.x,
+    y: e.clientY - dragStart.value.y
+  }
+}
+
+const stopDrag = () => {
+  isDragging.value = false
+}
+
+const startResize = (e: MouseEvent) => {
+  if (route.name === 'music') return
+  e.stopPropagation()
+  isResizing.value = true
+  dragStart.value = {
+    x: e.clientX,
+    y: e.clientY
+  }
+}
+
+const onResize = (e: MouseEvent) => {
+  if (!isResizing.value) return
+  const deltaX = e.clientX - dragStart.value.x
+  const deltaY = e.clientY - dragStart.value.y
+  playerSize.value = {
+    width: Math.max(300, playerSize.value.width + deltaX),
+    height: Math.max(200, playerSize.value.height + deltaY)
+  }
+  dragStart.value = { x: e.clientX, y: e.clientY }
+}
+
+const stopResize = () => {
+  isResizing.value = false
+}
+
+// Handle route changes to reposition player
+watch(
+  () => route.name,
+  (newRoute, oldRoute) => {
+    if (newRoute === 'music') {
+      // Save current position before entering music view
+      if (userHasMoved.value) {
+        savedPosition.value = { ...playerPosition.value }
+      }
+      // Reset to center position when entering music view
+      playerPosition.value = { x: 0, y: 0 }
+      isCollapsed.value = false
+    } else if (oldRoute === 'music') {
+      // Restore saved position when leaving music view
+      if (userHasMoved.value) {
+        playerPosition.value = { ...savedPosition.value }
+      } else {
+        // First time moving away from music view, set to corner
+        playerPosition.value = { x: 0, y: 0 } // Will be positioned by CSS
+      }
+    }
+    // If user has moved and we're navigating between non-music views, keep their position
+  }
+)
+
+// Add global mouse event listeners
+onMounted(() => {
+  window.addEventListener('mousemove', onDrag)
+  window.addEventListener('mousemove', onResize)
+  window.addEventListener('mouseup', stopDrag)
+  window.addEventListener('mouseup', stopResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mousemove', onDrag)
+  window.removeEventListener('mousemove', onResize)
+  window.removeEventListener('mouseup', stopDrag)
+  window.removeEventListener('mouseup', stopResize)
+})
+
 // Computed
 const genres = computed(() => {
   return genresData.value.map((g) => g.title).sort()
@@ -960,6 +1118,78 @@ watch(
 
         <!-- Player -->
         <div class="player-section">
+          <Teleport to="#global-music-player">
+            <div 
+              v-if="selectedPlaylist" 
+              class="global-player-wrapper"
+              :class="{ 
+                'is-collapsed': isCollapsed,
+                'is-dragging': isDragging,
+                'is-resizing': isResizing,
+                'user-positioned': userHasMoved && route.name !== 'music'
+              }"
+              :style="{
+                transform: userHasMoved && route.name !== 'music' ? `translate(${playerPosition.x}px, ${playerPosition.y}px)` : undefined,
+                width: route.name !== 'music' && !isCollapsed ? `${playerSize.width}px` : undefined,
+                height: route.name !== 'music' && !isCollapsed ? `${playerSize.height}px` : undefined
+              }"
+            >
+              <div 
+                v-show="route.name !== 'music'"
+                class="floating-player-header"
+              >
+                <div class="drag-handle" @mousedown="startDrag" title="Drag to move">
+                  <GripVertical :size="14" />
+                </div>
+                <div class="floating-player-info">
+                  <MusicIcon :size="16" class="floating-icon" />
+                  <div class="floating-text">
+                    <div class="floating-title">{{ selectedPlaylist.title }}</div>
+                    <div class="floating-artist" v-if="selectedPlaylist.properties?.artist?.relations?.[0]?.title">
+                      {{ selectedPlaylist.properties.artist.relations[0].title }}
+                    </div>
+                  </div>
+                </div>
+                <div class="header-buttons">
+                  <button 
+                    @click.stop="toggleCollapse" 
+                    class="header-button"
+                    :title="isCollapsed ? 'Expand player' : 'Collapse player'"
+                  >
+                    <ChevronUp v-if="isCollapsed" :size="14" />
+                    <ChevronDown v-else :size="14" />
+                  </button>
+                  <button 
+                    @click.stop="navigateToMusic" 
+                    class="header-button"
+                    title="Go to Music view"
+                  >
+                    <ExternalLink :size="14" />
+                  </button>
+                  <button 
+                    @click.stop="selectedPlaylist = null" 
+                    class="header-button"
+                    title="Close player"
+                  >
+                    <X :size="14" />
+                  </button>
+                </div>
+              </div>
+              <div class="floating-player-content" :class="{ 'is-hidden': isCollapsed }">
+                <component
+                  :is="YoutubePlayer"
+                  :url="selectedPlaylist.properties.url"
+                  :key="selectedPlaylist.id"
+                />
+              </div>
+              <div 
+                v-if="route.name !== 'music' && !isCollapsed" 
+                class="resize-handle"
+                @mousedown="startResize"
+              ></div>
+            </div>
+          </Teleport>
+
           <div
             v-if="selectedPlaylist"
             class="player-header"
@@ -1032,12 +1262,8 @@ watch(
             </div>
           </div>
           <div class="player-content">
-            <div v-if="selectedPlaylist" class="player-wrapper">
-              <component
-                :is="YoutubePlayer"
-                :url="selectedPlaylist.properties.url"
-                :key="selectedPlaylist.id"
-              />
+            <div v-if="selectedPlaylist" class="player-display-wrapper" id="music-view-player-target">
+              <!-- Player is rendered here via teleport from global container -->
             </div>
             <div v-else class="player-empty">
               <MusicIcon :size="64" class="empty-icon" />
@@ -1575,6 +1801,12 @@ watch(
   max-width: 1280px;
 }
 
+.player-display-wrapper {
+  width: 100%;
+  max-width: 1280px;
+  min-height: 400px;
+}
+
 .player-empty {
   text-align: center;
   color: var(--text-tertiary);
@@ -1596,22 +1828,320 @@ watch(
 }
 
 /* YouTube Player Styles */
+.global-player-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.global-player-wrapper.is-dragging {
+  cursor: grabbing;
+}
+
+.global-player-wrapper.is-collapsed {
+  height: auto !important;
+  width: 350px !important;
+  max-width: calc(100vw - 40px) !important;
+}
+
+.global-player-wrapper.user-positioned {
+  position: fixed;
+  bottom: auto !important;
+  right: auto !important;
+}
+
+.floating-player-header {
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+  transition: background 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  user-select: none;
+}
+
+.drag-handle {
+  color: var(--text-tertiary);
+  cursor: move;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.drag-handle:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.floating-player-header:active {
+  cursor: default;
+}
+
+.floating-player-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.floating-icon {
+  color: var(--btn-primary-bg);
+  flex-shrink: 0;
+}
+
+.floating-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.floating-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floating-artist {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.header-button {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.header-button:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.floating-player-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.floating-player-content.is-hidden {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.global-music-player.route-music .floating-player-content {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  background: linear-gradient(
+    135deg,
+    transparent 0%,
+    transparent 50%,
+    var(--text-tertiary) 50%,
+    var(--text-tertiary) 60%,
+    transparent 60%,
+    transparent 70%,
+    var(--text-tertiary) 70%,
+    var(--text-tertiary) 80%,
+    transparent 80%
+  );
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.resize-handle:hover {
+  opacity: 1;
+}
+
+.player-empty {
+  text-align: center;
+  color: var(--text-tertiary);
+}
+
+.empty-icon {
+  margin: 0 auto 16px;
+  opacity: 0.5;
+}
+
+.empty-text {
+  font-size: 16px;
+}
+
+@media (min-width: 768px) {
+  .empty-text {
+    font-size: 20px;
+  }
+}
+
+/* YouTube Player Styles */
+.global-player-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.floating-player-header {
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.floating-player-header:hover {
+  background: var(--bg-primary);
+}
+
+.route-music .floating-player-header {
+  display: none;
+}
+
+.floating-player-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.floating-icon {
+  color: var(--btn-primary-bg);
+  flex-shrink: 0;
+}
+
+.floating-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.floating-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floating-artist {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floating-player-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.route-music .floating-player-content {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.player-display-wrapper {
+  width: 100%;
+  max-width: 1280px;
+}
+
+.playing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 48px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  border: 1px solid var(--border-primary);
+}
+
+.playing-icon {
+  width: 64px;
+  height: 64px;
+  color: var(--btn-primary-bg);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.playing-text {
+  flex: 1;
+}
+
+.playing-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.playing-subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
 .youtube-player-container {
   position: relative;
   width: 100%;
-  min-height: 400px;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  height: 0;
   background: var(--bg-secondary);
   border-radius: 8px;
   border: 1px solid var(--border-primary);
   overflow: hidden;
-}
-
-@media (min-width: 768px) {
-  .youtube-player-container {
-    padding-bottom: 56.25%;
-    height: 0;
-    min-height: 0;
-  }
 }
 
 .youtube-player {
@@ -1625,14 +2155,9 @@ watch(
   background: var(--bg-secondary);
 }
 
-@media (max-width: 767px) {
-  .youtube-player-container {
-    height: 400px !important;
-  }
-
-  .youtube-player {
-    height: 100% !important;
-  }
+.youtube-player :deep(iframe) {
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .player-error-overlay,
