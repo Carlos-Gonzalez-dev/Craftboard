@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { Search, Loader } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { getApiUrl, getCollectionItems } from '../../utils/craftApi'
@@ -14,6 +15,8 @@ const emit = defineEmits<{
   'update:data': [data: any]
   'update:title': [title: string]
 }>()
+
+const router = useRouter()
 
 // API Configuration
 const apiBaseUrl = ref('')
@@ -197,6 +200,15 @@ const selectBookmark = (bookmark: BookmarkItem) => {
   isConfiguring.value = false
 }
 
+const navigateToCategory = (category: string, event: Event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  router.push({
+    path: '/bookmarks',
+    query: { category }
+  })
+}
+
 const openBookmark = () => {
   if (selectedBookmark.value?.url) {
     window.open(selectedBookmark.value.url, '_blank', 'noopener,noreferrer')
@@ -311,9 +323,14 @@ watch(
             {{ selectedBookmark.title || getDomain(selectedBookmark.url) }}
           </div>
           <div class="bookmark-url-small">{{ getDomain(selectedBookmark.url) }}</div>
-          <div v-if="selectedBookmark.category" class="bookmark-category-badge">
+          <button
+            v-if="selectedBookmark.category"
+            @click="navigateToCategory(selectedBookmark.category, $event)"
+            class="bookmark-category-badge"
+            :title="`Go to ${selectedBookmark.category} bookmarks`"
+          >
             {{ selectedBookmark.category }}
-          </div>
+          </button>
         </div>
       </a>
     </div>
@@ -544,11 +561,22 @@ watch(
 
 .bookmark-category-badge {
   display: inline-block;
-  padding: 2px 8px;
-  background: var(--btn-primary-bg);
-  color: white;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-top: 8px;
+  border: 1px solid var(--border-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.bookmark-category-badge:hover {
+  background: var(--bg-secondary);
+  color: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  transform: translateY(-1px);
 }
 </style>

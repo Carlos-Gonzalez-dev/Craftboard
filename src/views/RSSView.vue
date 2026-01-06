@@ -14,13 +14,14 @@ import {
 } from '../utils/craftApi'
 import { fetchRSSFeed, type RSSFeed } from '../utils/rssParser'
 import { getFaviconUrl } from '../utils/favicon'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import ViewTabs from '../components/ViewTabs.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
 
 const route = useRoute()
+const router = useRouter()
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
 const setSubheader =
@@ -80,15 +81,32 @@ const categories = computed(() => {
 
 // Get items for selected category
 const selectedCategoryItems = computed(() => {
-  if (!selectedCategory.value) return []
+  // If no category selected (All), return all items
+  if (!selectedCategory.value || selectedCategory.value === '') {
+    return rssItems.value
+  }
   const found = groupedItems.value.find(([category]) => category === selectedCategory.value)
   return found ? found[1] : []
 })
 
 // Set initial selected category
 const initializeSelectedCategory = () => {
-  if (categories.value.length > 0 && !selectedCategory.value) {
-    selectedCategory.value = categories.value[0]
+  // Check if there's a category in the URL query
+  const categoryFromUrl = route.query.category as string | undefined
+  
+  if (categoryFromUrl !== undefined) {
+    // If category is empty string or 'all', show All
+    if (categoryFromUrl === '' || categoryFromUrl.toLowerCase() === 'all') {
+      selectedCategory.value = null
+    } else if (categories.value.includes(categoryFromUrl)) {
+      selectedCategory.value = categoryFromUrl
+    } else {
+      // Invalid category, default to All
+      selectedCategory.value = null
+    }
+  } else {
+    // No URL parameter, start with "All" (null) by default
+    selectedCategory.value = null
   }
 }
 
@@ -396,6 +414,19 @@ const formatDate = (dateString?: string) => {
   }
 }
 
+// Watch for selectedCategory changes to update URL
+watch(selectedCategory, (newCategory) => {
+  // Update URL query parameter
+  const currentCategory = route.query.category
+  const newCategoryParam = newCategory || ''
+  
+  if (currentCategory !== newCategoryParam) {
+    router.replace({
+      query: { ...route.query, category: newCategoryParam || undefined }
+    })
+  }
+})
+
 // Watch for groupedItems changes to initialize selected category
 watch(
   groupedItems,
@@ -417,10 +448,13 @@ onMounted(() => {
     setSubheader({
       default: () =>
         h(ViewTabs, {
-          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          tabs: [
+            { id: '', label: 'All' },
+            ...categories.value.map((cat) => ({ id: cat, label: cat }))
+          ],
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
-            selectedCategory.value = tab
+            selectedCategory.value = tab || null
           },
         }),
       right: () => [
@@ -457,10 +491,13 @@ onActivated(() => {
     setSubheader({
       default: () =>
         h(ViewTabs, {
-          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          tabs: [
+            { id: '', label: 'All' },
+            ...categories.value.map((cat) => ({ id: cat, label: cat }))
+          ],
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
-            selectedCategory.value = tab
+            selectedCategory.value = tab || null
           },
         }),
       right: () => [
@@ -489,10 +526,13 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
     setSubheader({
       default: () =>
         h(ViewTabs, {
-          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          tabs: [
+            { id: '', label: 'All' },
+            ...categories.value.map((cat) => ({ id: cat, label: cat }))
+          ],
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
-            selectedCategory.value = tab
+            selectedCategory.value = tab || null
           },
         }),
       right: () => [
@@ -550,7 +590,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
       <template v-else>
         <div class="rss-content">
           <div class="rss-tabs-container">
-            <div v-if="selectedCategory" class="rss-tab-content">
+            <div v-if="categories.length > 0" class="rss-tab-content">
               <div class="rss-feeds">
                 <div v-for="item in selectedCategoryItems" :key="item.id" class="rss-feed-card">
                   <div class="feed-header">
