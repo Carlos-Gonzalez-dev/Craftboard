@@ -550,6 +550,21 @@ const openInCraft = async () => {
   color: inherit;
 }
 
+.markdown-content :deep(a) {
+  color: var(--btn-primary-bg);
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.markdown-content :deep(a:hover) {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.markdown-content :deep(a:visited) {
+  color: var(--btn-primary-bg);
+}
+
 /* Hide bullet markers for task lists */
 .markdown-content :deep(ul) {
   list-style-type: none;

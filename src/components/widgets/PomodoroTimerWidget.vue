@@ -41,13 +41,18 @@ const loadState = () => {
   if (props.widget.data) {
     timerType.value = props.widget.data.timerType || 'work'
     completedPomodoros.value = props.widget.data.completedPomodoros || 0
-    
+
     // If timer was running, recalculate time based on timestamp
-    if (props.widget.data.isRunning && !props.widget.data.isPaused && props.widget.data.startTimestamp) {
+    if (
+      props.widget.data.isRunning &&
+      !props.widget.data.isPaused &&
+      props.widget.data.startTimestamp
+    ) {
       const elapsed = Math.floor((Date.now() - props.widget.data.startTimestamp) / 1000)
-      const originalTime = props.widget.data.timeRemainingAtStart || getDefaultDuration(timerType.value)
+      const originalTime =
+        props.widget.data.timeRemainingAtStart || getDefaultDuration(timerType.value)
       const newTimeRemaining = Math.max(0, originalTime - elapsed)
-      
+
       if (newTimeRemaining <= 0) {
         // Timer completed while away - mark for completion after load
         timeRemaining.value = 0
@@ -139,17 +144,17 @@ const startTimer = () => {
 
   isRunning.value = true
   isPaused.value = false
-  
+
   // If resuming from pause, use the paused time
   if (pausedTimeRemaining.value !== null) {
     timeRemaining.value = pausedTimeRemaining.value
     pausedTimeRemaining.value = null
   }
-  
+
   // Save the time remaining at start for timestamp-based calculation
   timeRemainingAtStart.value = timeRemaining.value
   startTimestamp.value = Date.now()
-  
+
   // Check if timer already exists (might have been kept alive from previous mount)
   const existingTimer = getTimer(props.widget.id)
   if (!existingTimer) {
@@ -168,16 +173,22 @@ const startTimer = () => {
     })
   } else {
     // Timer exists, just update the route and timestamps
-    updateTimer(props.widget.id, {
+    // Don't overwrite isCompleted if it's already set
+    const updates: any = {
       route: route.path,
       paneId: activePaneId.value,
       timeRemaining: timeRemaining.value,
       startTimestamp: startTimestamp.value,
       timeRemainingAtStart: timeRemainingAtStart.value,
       isRunning: true,
-    })
+    }
+
+    // Preserve isCompleted if it exists
+    if (!existingTimer.isCompleted) {
+      updateTimer(props.widget.id, updates)
+    }
   }
-  
+
   saveState()
 
   intervalId.value = window.setInterval(() => {
@@ -185,13 +196,13 @@ const startTimer = () => {
     const globalTimer = getTimer(props.widget.id)
     if (globalTimer) {
       timeRemaining.value = globalTimer.timeRemaining
-      
-      // Check if timer completed
-      if (globalTimer.timeRemaining <= 0 && globalTimer.isRunning === false) {
+
+      // Check if timer is marked as completed
+      if (globalTimer.isCompleted) {
         completeTimer()
         return
       }
-      
+
       // Save state every 5 seconds
       if (startTimestamp.value) {
         const elapsed = Math.floor((Date.now() - startTimestamp.value) / 1000)
@@ -213,10 +224,10 @@ const pauseTimer = () => {
     clearInterval(intervalId.value)
     intervalId.value = null
   }
-  
+
   // Unregister from active timers
   unregisterTimer(props.widget.id)
-  
+
   saveState()
 }
 
@@ -231,10 +242,10 @@ const resetTimer = () => {
     clearInterval(intervalId.value)
     intervalId.value = null
   }
-  
+
   // Unregister from active timers
   unregisterTimer(props.widget.id)
-  
+
   timeRemaining.value = getDefaultDuration(timerType.value)
   saveState()
 }
@@ -250,16 +261,12 @@ const completeTimer = () => {
     clearInterval(intervalId.value)
     intervalId.value = null
   }
-  
-  // Unregister from active timers
-  unregisterTimer(props.widget.id)
-  startTimestamp.value = null
-  timeRemainingAtStart.value = null
-  pausedTimeRemaining.value = null
-  if (intervalId.value) {
-    clearInterval(intervalId.value)
-    intervalId.value = null
-  }
+
+  // Keep timer at 0 to show completed state
+  timeRemaining.value = 0
+
+  // Don't unregister - timer will stay visible as completed
+  // The global composable already marks it as isCompleted: true
 
   // Play notification sound
   playNotificationSound()
@@ -267,26 +274,18 @@ const completeTimer = () => {
   // Show browser notification if permission granted
   if ('Notification' in window && Notification.permission === 'granted') {
     new Notification('Pomodoro Timer', {
-      body: timerType.value === 'work' ? 'Focus session complete! Time for a break.' : 'Break complete! Ready to focus?',
+      body:
+        timerType.value === 'work'
+          ? 'Focus session complete! Time for a break.'
+          : 'Break complete! Ready to focus?',
       icon: '/favicon.ico',
     })
   }
 
-  // Update completed pomodoros and switch timer type
+  // Don't auto-switch timer type - let user dismiss and manually start next session
+  // Just update the completed pomodoros count if it was a work session
   if (timerType.value === 'work') {
     completedPomodoros.value++
-    // Switch to break (long break every 4 pomodoros)
-    if (completedPomodoros.value % POMODOROS_UNTIL_LONG_BREAK === 0) {
-      timerType.value = 'longBreak'
-      timeRemaining.value = LONG_BREAK_DURATION
-    } else {
-      timerType.value = 'shortBreak'
-      timeRemaining.value = SHORT_BREAK_DURATION
-    }
-  } else {
-    // Break complete, switch to work
-    timerType.value = 'work'
-    timeRemaining.value = WORK_DURATION
   }
 
   saveState()
@@ -337,16 +336,13 @@ onMounted(() => {
   loadState()
   requestNotificationPermission()
 
-  // Check if timer completed while away (timeRemaining is 0 but was running)
-  if (timeRemaining.value === 0 && props.widget.data?.isRunning && !props.widget.data?.isPaused) {
-    // Timer completed while tab was away
-    completeTimer()
-    return
-  }
-
-  // Restore running state if it was running
-  if (isRunning.value && !isPaused.value && startTimestamp.value && timeRemainingAtStart.value !== null) {
-    // Timer was running, recalculate and continue
+  // If timer was running, restart it and register in the global bar
+  if (
+    isRunning.value &&
+    !isPaused.value &&
+    startTimestamp.value &&
+    timeRemainingAtStart.value !== null
+  ) {
     startTimer()
   }
 })
@@ -379,7 +375,12 @@ onUnmounted(() => {
     </div>
 
     <div class="timer-controls">
-      <button v-if="!isRunning" @click="startTimer" class="control-button start-button" title="Start">
+      <button
+        v-if="!isRunning"
+        @click="startTimer"
+        class="control-button start-button"
+        title="Start"
+      >
         <Play :size="18" />
       </button>
       <button v-else @click="pauseTimer" class="control-button pause-button" title="Pause">
@@ -572,4 +573,3 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
 }
 </style>
-
