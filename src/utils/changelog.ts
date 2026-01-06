@@ -5,6 +5,12 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: '2026-01-06',
+    changes: [
+      'Dragging is now only possible using the widget header to prevent moving widgets accidentally',
+    ],
+  },
+  {
     date: '2026-01-04v2',
     changes: [
       'On mobile added a reload app button on the sidebar footer',

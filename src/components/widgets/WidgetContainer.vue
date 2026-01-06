@@ -317,7 +317,6 @@ const { isCompactView } = useWidgetView()
     class="widget-container"
     :class="{
       fullscreen: isFullscreen && false,
-      draggable: isDraggingEnabled,
       'compact-view': isCompactView,
     }"
     :style="isCompactView ? compactBorderStyle : {}"
@@ -325,6 +324,7 @@ const { isCompactView } = useWidgetView()
     <div
       v-if="!isCompactView"
       class="widget-header"
+      :class="{ draggable: isDraggingEnabled }"
       :style="headerStyle"
       @dblclick="!isEditingTitle && toggleFullscreen()"
     >
@@ -403,7 +403,7 @@ const { isCompactView } = useWidgetView()
         ></button>
       </div>
     </div>
-    <div class="widget-content">
+    <div class="widget-content no-drag">
       <MarkdownWidget v-if="widget.type === 'markdown'" :widget="widget" />
       <ClockWidget v-else-if="widget.type === 'clock'" />
       <StopwatchWidget v-else-if="widget.type === 'stopwatch'" />
@@ -495,8 +495,8 @@ const { isCompactView } = useWidgetView()
 
   <Teleport to="body">
     <div v-if="isFullscreen" class="fullscreen-overlay">
-      <div class="widget-container fullscreen" :class="{ draggable: isDraggingEnabled }">
-        <div class="widget-header" :style="headerStyle" @dblclick="toggleFullscreen()">
+      <div class="widget-container fullscreen">
+        <div class="widget-header" :class="{ draggable: isDraggingEnabled }" :style="headerStyle" @dblclick="toggleFullscreen()">
           <div
             class="drag-handle"
             @click="toggleDragging"
@@ -518,7 +518,7 @@ const { isCompactView } = useWidgetView()
             <Minimize2 :size="14" />
           </button>
         </div>
-        <div class="widget-content">
+        <div class="widget-content no-drag">
           <MarkdownWidget v-if="widget.type === 'markdown'" :widget="widget" />
           <ClockWidget v-else-if="widget.type === 'clock'" />
           <StopwatchWidget v-else-if="widget.type === 'stopwatch'" />
@@ -623,10 +623,6 @@ const { isCompactView } = useWidgetView()
   cursor: default;
 }
 
-.widget-container.draggable {
-  cursor: move;
-}
-
 .widget-container:hover {
   box-shadow:
     0 8px 30px rgba(0, 0, 0, 0.4),
@@ -657,6 +653,11 @@ const { isCompactView } = useWidgetView()
   border-bottom: 1px solid rgba(0, 0, 0, 0.2);
   border-radius: 7px 7px 0 0;
   position: relative;
+  cursor: default;
+}
+
+.widget-header.draggable {
+  cursor: move;
 }
 
 .drag-handle {

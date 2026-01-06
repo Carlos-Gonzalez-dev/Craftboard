@@ -24,6 +24,8 @@ const layout = ref(
     w: w.w,
     h: w.h,
     static: w.data?.draggingEnabled === false, // Static if dragging is disabled
+    dragAllowFrom: '.widget-header',
+    dragIgnoreFrom: '.no-drag',
   })),
 )
 
@@ -41,6 +43,8 @@ watch(
         w: w.w,
         h: w.h,
         static: w.data?.draggingEnabled === false || (existing?.static ?? false),
+        dragAllowFrom: '.widget-header',
+        dragIgnoreFrom: '.no-drag',
       }
     })
   },
@@ -61,7 +65,7 @@ const handleLayoutUpdate = (newLayout: any[]) => {
     }
     return widget
   })
-  
+
   emit('update:widgets', updatedWidgets)
 }
 
@@ -100,7 +104,7 @@ const getWidgetForItem = (itemId: string) => {
       `\n  Layout items: ${layout.value.map((l) => l.i).join(', ')}`,
       `\n  Available widget IDs: ${props.widgets.map((w) => w.id).join(', ')}`,
       `\n  Total widgets: ${props.widgets.length}`,
-      `\n  Total layout items: ${layout.value.length}`
+      `\n  Total layout items: ${layout.value.length}`,
     )
   }
   return widget
