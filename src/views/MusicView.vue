@@ -644,8 +644,7 @@ const navigateToMusic = () => {
 // Floating player state
 const isCollapsed = ref(false)
 const playerPosition = ref({ x: 0, y: 0 })
-const savedPosition = ref({ x: 0, y: 0 }) // Save position before going to music view
-const positionBeforeCollapse = ref({ x: 0, y: 0 }) // Save position before collapsing
+const positionBeforeCollapse = ref({ x: 0, y: 0 })
 const playerSize = ref({ width: 350, height: 250 })
 const isDragging = ref(false)
 const isResizing = ref(false)
@@ -656,7 +655,7 @@ const userHasMoved = ref(false)
 watch(
   () => playerSize.value,
   (newSize) => {
-    if (route.name !== 'music' && selectedPlaylist.value) {
+    if (selectedPlaylist.value) {
       // Find and resize YouTube player
       const playerWrapper = document.querySelector('.global-player-wrapper')
       if (playerWrapper) {
@@ -676,23 +675,16 @@ watch(
 
 const toggleCollapse = () => {
   if (!isCollapsed.value) {
-    // Collapsing - save current position and move to bottom right
+    // Collapsing - save current position
     positionBeforeCollapse.value = { ...playerPosition.value }
-    // Move to bottom right corner (will be positioned by CSS when not user-positioned)
-    playerPosition.value = { x: 0, y: 0 }
-    userHasMoved.value = false // Let CSS position it
   } else {
     // Expanding - restore previous position
     playerPosition.value = { ...positionBeforeCollapse.value }
-    if (positionBeforeCollapse.value.x !== 0 || positionBeforeCollapse.value.y !== 0) {
-      userHasMoved.value = true
-    }
   }
   isCollapsed.value = !isCollapsed.value
 }
 
 const startDrag = (e: MouseEvent) => {
-  if (route.name === 'music') return // Don't allow dragging on music view
   isDragging.value = true
   dragStart.value = {
     x: e.clientX - playerPosition.value.x,
@@ -714,7 +706,6 @@ const stopDrag = () => {
 }
 
 const startResize = (e: MouseEvent) => {
-  if (route.name === 'music') return
   e.stopPropagation()
   isResizing.value = true
   dragStart.value = {
@@ -738,30 +729,7 @@ const stopResize = () => {
   isResizing.value = false
 }
 
-// Handle route changes to reposition player
-watch(
-  () => route.name,
-  (newRoute, oldRoute) => {
-    if (newRoute === 'music') {
-      // Save current position before entering music view
-      if (userHasMoved.value) {
-        savedPosition.value = { ...playerPosition.value }
-      }
-      // Reset to center position when entering music view
-      playerPosition.value = { x: 0, y: 0 }
-      isCollapsed.value = false
-    } else if (oldRoute === 'music') {
-      // Restore saved position when leaving music view
-      if (userHasMoved.value) {
-        playerPosition.value = { ...savedPosition.value }
-      } else {
-        // First time moving away from music view, set to corner
-        playerPosition.value = { x: 0, y: 0 } // Will be positioned by CSS
-      }
-    }
-    // If user has moved and we're navigating between non-music views, keep their position
-  }
-)
+
 
 // Add global mouse event listeners
 onMounted(() => {
@@ -1126,18 +1094,15 @@ watch(
                 'is-collapsed': isCollapsed,
                 'is-dragging': isDragging,
                 'is-resizing': isResizing,
-                'user-positioned': userHasMoved && route.name !== 'music'
+                'user-positioned': userHasMoved
               }"
               :style="{
-                transform: userHasMoved && route.name !== 'music' ? `translate(${playerPosition.x}px, ${playerPosition.y}px)` : undefined,
-                width: route.name !== 'music' && !isCollapsed ? `${playerSize.width}px` : undefined,
-                height: route.name !== 'music' && !isCollapsed ? `${playerSize.height}px` : undefined
+                transform: userHasMoved ? `translate(${playerPosition.x}px, ${playerPosition.y}px)` : undefined,
+                width: !isCollapsed ? `${playerSize.width}px` : undefined,
+                height: !isCollapsed ? `${playerSize.height}px` : undefined
               }"
             >
-              <div 
-                v-show="route.name !== 'music'"
-                class="floating-player-header"
-              >
+              <div class="floating-player-header">
                 <div class="drag-handle" @mousedown="startDrag" title="Drag to move">
                   <GripVertical :size="14" />
                 </div>
@@ -1183,7 +1148,7 @@ watch(
                 />
               </div>
               <div 
-                v-if="route.name !== 'music' && !isCollapsed" 
+                v-if="!isCollapsed" 
                 class="resize-handle"
                 @mousedown="startResize"
               ></div>
@@ -2036,10 +2001,6 @@ watch(
 
 .floating-player-header:hover {
   background: var(--bg-primary);
-}
-
-.route-music .floating-player-header {
-  display: none;
 }
 
 .floating-player-info {
