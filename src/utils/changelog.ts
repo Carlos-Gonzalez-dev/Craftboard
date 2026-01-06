@@ -5,6 +5,13 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: '2026-01-06v2',
+    changes: [
+      'Improved update app button on mobile devices',
+      'Added "All" buttons on Bookmark and RSS views to see all items without filters',
+    ],
+  },
+  {
     date: '2026-01-06',
     changes: [
       'Dragging is now only possible using the widget header to prevent moving widgets accidentally',
