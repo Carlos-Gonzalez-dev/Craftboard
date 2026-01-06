@@ -34,6 +34,8 @@ const totalApiCalls = ref(0)
 const completedApiCalls = ref(0)
 const searchQuery = ref('')
 const selectedTags = ref<Set<string>>(new Set())
+const selectedPeriod = ref<string>('all')
+const sortOrder = ref<'asc' | 'desc'>('desc')
 const showAddTagModal = ref(false)
 const newTag = ref('')
 
@@ -96,9 +98,97 @@ const allTags = computed(() => {
   return Array.from(tagsSet).sort()
 })
 
+// Count documents per tag (considering time period filter)
+const tagCounts = computed(() => {
+  const counts = new Map<string, number>()
+
+  // First filter by time period if needed
+  let itemsToCount = logs.value
+  if (selectedPeriod.value !== 'all') {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth()
+
+    itemsToCount = logs.value.filter((item) => {
+      if (!item.createdAt) return false
+      const itemDate = new Date(item.createdAt)
+
+      switch (selectedPeriod.value) {
+        case 'month':
+          return itemDate.getFullYear() === currentYear && itemDate.getMonth() === currentMonth
+        case 'quarter': {
+          const currentQuarter = Math.floor(currentMonth / 3)
+          const itemQuarter = Math.floor(itemDate.getMonth() / 3)
+          return itemDate.getFullYear() === currentYear && itemQuarter === currentQuarter
+        }
+        case 'semester': {
+          const currentSemester = Math.floor(currentMonth / 6)
+          const itemSemester = Math.floor(itemDate.getMonth() / 6)
+          return itemDate.getFullYear() === currentYear && itemSemester === currentSemester
+        }
+        case 'year':
+          return itemDate.getFullYear() === currentYear
+        case 'lastyear':
+          return itemDate.getFullYear() === currentYear - 1
+        default:
+          return true
+      }
+    })
+  }
+
+  itemsToCount.forEach((log) => {
+    log.tags.forEach((tag) => {
+      counts.set(tag, (counts.get(tag) || 0) + 1)
+    })
+  })
+
+  return counts
+})
+
 // Filter logs by search and tags
 const filteredLogs = computed(() => {
   let items = logs.value
+
+  // Apply time period filter
+  if (selectedPeriod.value !== 'all') {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth()
+
+    items = items.filter((item) => {
+      if (!item.createdAt) return false
+      const itemDate = new Date(item.createdAt)
+
+      switch (selectedPeriod.value) {
+        case 'month': {
+          // This month
+          return itemDate.getFullYear() === currentYear && itemDate.getMonth() === currentMonth
+        }
+        case 'quarter': {
+          // This quarter (Q1: 0-2, Q2: 3-5, Q3: 6-8, Q4: 9-11)
+          const currentQuarter = Math.floor(currentMonth / 3)
+          const itemQuarter = Math.floor(itemDate.getMonth() / 3)
+          return itemDate.getFullYear() === currentYear && itemQuarter === currentQuarter
+        }
+        case 'semester': {
+          // This semester (H1: 0-5, H2: 6-11)
+          const currentSemester = Math.floor(currentMonth / 6)
+          const itemSemester = Math.floor(itemDate.getMonth() / 6)
+          return itemDate.getFullYear() === currentYear && itemSemester === currentSemester
+        }
+        case 'year': {
+          // This year
+          return itemDate.getFullYear() === currentYear
+        }
+        case 'lastyear': {
+          // Last year
+          return itemDate.getFullYear() === currentYear - 1
+        }
+        default:
+          return true
+      }
+    })
+  }
 
   // Apply search filter
   if (searchQuery.value.trim()) {
@@ -119,6 +209,16 @@ const filteredLogs = computed(() => {
     })
   }
 
+  // Sort by created date
+  items.sort((a, b) => {
+    if (!a.createdAt && !b.createdAt) return 0
+    if (!a.createdAt) return 1
+    if (!b.createdAt) return -1
+    
+    const comparison = b.createdAt.localeCompare(a.createdAt)
+    return sortOrder.value === 'desc' ? comparison : -comparison
+  })
+
   return items
 })
 
@@ -134,6 +234,11 @@ const toggleTag = (tag: string) => {
 const clearFilters = () => {
   searchQuery.value = ''
   selectedTags.value = new Set()
+  selectedPeriod.value = 'all'
+}
+
+const toggleSortOrder = () => {
+  sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
 }
 
 // Cache functions
@@ -453,10 +558,29 @@ onMounted(() => {
                 <button
                   @click="clearFilters"
                   class="clear-filters-icon-button"
-                  :disabled="selectedTags.size === 0 && !searchQuery"
+                  :disabled="selectedTags.size === 0 && !searchQuery && selectedPeriod === 'all'"
                   title="Clear filters"
                 >
                   <X :size="18" />
+                </button>
+              </div>
+
+              <!-- Time Period Filter -->
+              <div class="period-filter">
+                <button
+                  v-for="period in [
+                    { value: 'all', label: 'All time' },
+                    { value: 'month', label: 'This month' },
+                    { value: 'quarter', label: 'This quarter' },
+                    { value: 'semester', label: 'This semester' },
+                    { value: 'year', label: 'This year' },
+                    { value: 'lastyear', label: 'Last year' },
+                  ]"
+                  :key="period.value"
+                  @click="selectedPeriod = period.value"
+                  :class="['period-button', { active: selectedPeriod === period.value }]"
+                >
+                  {{ period.label }}
                 </button>
               </div>
 
@@ -470,6 +594,7 @@ onMounted(() => {
                     :style="getTagColor(tag)"
                   >
                     #{{ tag }}
+                    <span class="tag-count">{{ tagCounts.get(tag) || 0 }}</span>
                   </button>
                 </div>
               </div>
@@ -483,7 +608,10 @@ onMounted(() => {
               <table class="logs-table">
                 <thead>
                   <tr>
-                    <th class="col-created">Created</th>
+                    <th class="col-created sortable" @click="toggleSortOrder" title="Click to toggle sort order">
+                      Created
+                      <span class="sort-indicator">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
+                    </th>
                     <th class="col-modified">Modified</th>
                     <th class="col-tags">Tags</th>
                     <th class="col-content">Content</th>
@@ -746,6 +874,41 @@ onMounted(() => {
   gap: 8px;
 }
 
+.period-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.period-button {
+  padding: 6px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.period-button:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
+}
+
+.period-button.active {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: white;
+}
+
+.period-button.active:hover {
+  background: var(--btn-primary-hover);
+  border-color: var(--btn-primary-hover);
+}
+
 .tags-list {
   display: flex;
   flex-wrap: wrap;
@@ -762,6 +925,31 @@ onMounted(() => {
   color: hsl(var(--tag-hue, 220), 70%, 35%);
   cursor: pointer;
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+[data-theme='dark'] .tag-count {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.tag-filter-button.active .tag-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
 }
 
 [data-theme='dark'] .tag-filter-button {
@@ -843,6 +1031,23 @@ onMounted(() => {
   border-bottom: 2px solid var(--border-primary);
   white-space: nowrap;
   background: var(--bg-secondary);
+}
+
+.logs-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.logs-table th.sortable:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.sort-indicator {
+  margin-left: 4px;
+  font-size: 12px;
+  opacity: 0.7;
 }
 
 .logs-table tbody tr {
