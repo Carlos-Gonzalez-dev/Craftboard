@@ -406,7 +406,7 @@ const { isCompactView } = useWidgetView()
     <div class="widget-content no-drag">
       <MarkdownWidget v-if="widget.type === 'markdown'" :widget="widget" />
       <ClockWidget v-else-if="widget.type === 'clock'" />
-      <StopwatchWidget v-else-if="widget.type === 'stopwatch'" />
+      <StopwatchWidget v-else-if="widget.type === 'stopwatch'" :widget="widget" />
       <NotesWidget v-else-if="widget.type === 'notes'" :widget="widget" />
       <CollectionWidget
         v-else-if="widget.type === 'collection'"
@@ -521,7 +521,7 @@ const { isCompactView } = useWidgetView()
         <div class="widget-content no-drag">
           <MarkdownWidget v-if="widget.type === 'markdown'" :widget="widget" />
           <ClockWidget v-else-if="widget.type === 'clock'" />
-          <StopwatchWidget v-else-if="widget.type === 'stopwatch'" />
+          <StopwatchWidget v-else-if="widget.type === 'stopwatch'" :widget="widget" />
           <NotesWidget v-else-if="widget.type === 'notes'" :widget="widget" />
           <CollectionWidget
             v-else-if="widget.type === 'collection'"

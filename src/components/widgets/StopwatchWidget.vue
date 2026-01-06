@@ -1,10 +1,25 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { Play, Pause, RotateCcw } from 'lucide-vue-next'
+import { useRoute } from 'vue-router'
+import { usePanes } from '../../composables/usePanes'
+import { useActiveTimers } from '../../composables/useActiveTimers'
+import type { Widget } from '../../types/widget'
+
+const props = defineProps<{
+  widget: Widget
+}>()
+
+const route = useRoute()
+const { activePaneId } = usePanes()
+const { registerTimer, unregisterTimer, updateTimer, getTimer } = useActiveTimers()
 
 const elapsed = ref(0) // in milliseconds
 const isRunning = ref(false)
 let interval: number | undefined
+let startTimestamp = 0
+
+const widgetDisplayName = computed(() => props.widget.title || props.widget.name || 'Stopwatch')
 
 const formatTime = (ms: number) => {
   const totalSeconds = Math.floor(ms / 1000)
@@ -20,10 +35,39 @@ const formatTime = (ms: number) => {
 
 const start = () => {
   isRunning.value = true
+  startTimestamp = Date.now()
   const startTime = Date.now() - elapsed.value
+  
+  // Register in active timers bar
+  const elapsedSeconds = Math.floor(elapsed.value / 1000)
+  registerTimer({
+    id: props.widget.id,
+    widgetName: widgetDisplayName.value,
+    timeRemaining: elapsedSeconds,
+    totalDuration: 60, // For progress bar (1 minute cycle)
+    isRunning: true,
+    isCompleted: false,
+    timerType: 'stopwatch',
+    route: route.path,
+    paneId: activePaneId.value,
+    startTimestamp: startTimestamp,
+    timeRemainingAtStart: 0,
+    elapsedAtStart: elapsedSeconds,
+    color: props.widget.color,
+    icon: 'stopwatch',
+  })
+  
   interval = window.setInterval(() => {
     elapsed.value = Date.now() - startTime
+    
+    // Sync with global timer
+    const globalTimer = getTimer(props.widget.id)
+    if (globalTimer) {
+      elapsed.value = globalTimer.timeRemaining * 1000
+    }
   }, 10) // Update every 10ms for smooth display
+  
+  saveState()
 }
 
 const pause = () => {
@@ -32,6 +76,16 @@ const pause = () => {
     clearInterval(interval)
     interval = undefined
   }
+  
+  // Update timer state but keep it in the bar
+  const elapsedSeconds = Math.floor(elapsed.value / 1000)
+  updateTimer(props.widget.id, {
+    isRunning: false,
+    timeRemaining: elapsedSeconds,
+    elapsedAtStart: elapsedSeconds
+  })
+  
+  saveState()
 }
 
 const reset = () => {
@@ -41,6 +95,11 @@ const reset = () => {
     clearInterval(interval)
     interval = undefined
   }
+  
+  // Remove from active timers bar
+  unregisterTimer(props.widget.id)
+  
+  saveState()
 }
 
 const toggle = () => {
@@ -51,10 +110,50 @@ const toggle = () => {
   }
 }
 
+const saveState = () => {
+  const state = {
+    elapsed: elapsed.value,
+    isRunning: isRunning.value,
+    timestamp: Date.now() // Save current timestamp instead of startTimestamp
+  }
+  localStorage.setItem(`stopwatch-${props.widget.id}`, JSON.stringify(state))
+}
+
+const loadState = () => {
+  const saved = localStorage.getItem(`stopwatch-${props.widget.id}`)
+  if (saved) {
+    try {
+      const state = JSON.parse(saved)
+      
+      if (state.isRunning && state.timestamp) {
+        // Calculate elapsed time including time since last save
+        const timeSinceLastSave = Date.now() - state.timestamp
+        elapsed.value = (state.elapsed || 0) + timeSinceLastSave
+        isRunning.value = true
+      } else {
+        elapsed.value = state.elapsed || 0
+        isRunning.value = false
+      }
+    } catch (e) {
+      console.error('Failed to load stopwatch state:', e)
+    }
+  }
+}
+
+onMounted(() => {
+  loadState()
+  
+  // If was running, restart with current elapsed time
+  if (isRunning.value) {
+    start()
+  }
+})
+
 onUnmounted(() => {
   if (interval) {
     clearInterval(interval)
   }
+  // Keep timer in bar when switching views
 })
 </script>
 

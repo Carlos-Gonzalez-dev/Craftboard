@@ -3,15 +3,18 @@ import { ref, computed } from 'vue'
 export interface ActiveTimer {
   id: string
   widgetName: string
-  timeRemaining: number
+  timeRemaining: number // For countdown timers
   totalDuration: number
   isRunning: boolean
   isCompleted: boolean
-  timerType: 'work' | 'short-break' | 'long-break'
+  timerType: 'work' | 'short-break' | 'long-break' | 'stopwatch'
   route: string
   paneId?: string
   startTimestamp: number
   timeRemainingAtStart: number
+  elapsedAtStart?: number // For stopwatch (elapsed time when started)
+  color?: string // Widget color
+  icon?: string // Widget icon type ('timer' or 'stopwatch')
 }
 
 // Simple in-memory storage - no persistence across page reloads
@@ -33,18 +36,30 @@ const startGlobalTimerUpdate = () => {
         return
       }
 
-      const elapsed = Math.floor((now - timer.startTimestamp) / 1000)
-      const newTimeRemaining = Math.max(0, timer.timeRemainingAtStart - elapsed)
+      // Handle stopwatch (counts up) differently from countdown timers
+      if (timer.timerType === 'stopwatch') {
+        const elapsedSinceStart = Math.floor((now - timer.startTimestamp) / 1000)
+        const totalElapsed = (timer.elapsedAtStart || 0) + elapsedSinceStart
+        
+        if (totalElapsed !== timer.timeRemaining) {
+          newMap.set(id, { ...timer, timeRemaining: totalElapsed })
+          hasChanges = true
+        }
+      } else {
+        // Countdown timer
+        const elapsed = Math.floor((now - timer.startTimestamp) / 1000)
+        const newTimeRemaining = Math.max(0, timer.timeRemainingAtStart - elapsed)
 
-      if (newTimeRemaining !== timer.timeRemaining) {
-        newMap.set(id, { ...timer, timeRemaining: newTimeRemaining })
-        hasChanges = true
-      }
+        if (newTimeRemaining !== timer.timeRemaining) {
+          newMap.set(id, { ...timer, timeRemaining: newTimeRemaining })
+          hasChanges = true
+        }
 
-      // If timer reached zero, mark it as completed
-      if (newTimeRemaining <= 0) {
-        newMap.set(id, { ...timer, timeRemaining: 0, isRunning: false, isCompleted: true })
-        hasChanges = true
+        // If timer reached zero, mark it as completed
+        if (newTimeRemaining <= 0) {
+          newMap.set(id, { ...timer, timeRemaining: 0, isRunning: false, isCompleted: true })
+          hasChanges = true
+        }
       }
     })
 

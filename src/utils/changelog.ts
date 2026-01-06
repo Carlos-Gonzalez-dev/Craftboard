@@ -9,6 +9,8 @@ export const changelog: ChangelogEntry[] = [
     changes: [
       'Dragging is now only possible using the widget header to prevent moving widgets accidentally',
       'Improved the music player. Now it works even when changing views as a floating music player',
+      'Improved Pomodoro Timers. Now they are visible on all views as a floating timer',
+      'Improved Stopwatch . Now it works even when changing views as a floating stopwatch',
     ],
   },
   {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ExternalLink, X, CheckCircle } from 'lucide-vue-next'
+import { ExternalLink, X, CheckCircle, Timer, TimerReset } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { usePanes } from '../composables/usePanes'
 import { useActiveTimers } from '../composables/useActiveTimers'
@@ -15,6 +15,20 @@ const { switchPane } = usePanes()
 const { unregisterTimer } = useActiveTimers()
 
 const formattedTime = computed(() => {
+  if (props.timer.timerType === 'stopwatch') {
+    // For stopwatch, show total elapsed time
+    const totalSeconds = props.timer.timeRemaining
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+    }
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+  }
+  
+  // Countdown timer
   const minutes = Math.floor(props.timer.timeRemaining / 60)
   const seconds = props.timer.timeRemaining % 60
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
@@ -22,6 +36,14 @@ const formattedTime = computed(() => {
 
 const progressPercentage = computed(() => {
   if (props.timer.isCompleted) return 100
+  
+  if (props.timer.timerType === 'stopwatch') {
+    // For stopwatch, progress fills every minute (0-60 seconds)
+    const secondsInCurrentMinute = props.timer.timeRemaining % 60
+    return (secondsInCurrentMinute / 60) * 100
+  }
+  
+  // Countdown timer
   if (props.timer.totalDuration === 0) return 0
   return ((props.timer.totalDuration - props.timer.timeRemaining) / props.timer.totalDuration) * 100
 })
@@ -46,6 +68,10 @@ const timerLabel = computed(() => {
 const dismissTimer = () => {
   unregisterTimer(props.timer.id)
 }
+
+const widgetIcon = computed(() => {
+  return props.timer.icon === 'stopwatch' ? TimerReset : Timer
+})
 </script>
 
 <template>
@@ -55,12 +81,20 @@ const dismissTimer = () => {
   >
     <div
       class="timer-progress-bg"
-      :style="{ width: `${progressPercentage}%` }"
+      :style="{ 
+        width: `${progressPercentage}%`,
+        background: timer.isCompleted ? undefined : timer.color 
+      }"
       :class="{ 'completed-bg': timer.isCompleted }"
     ></div>
     <div class="timer-content">
       <div class="timer-info">
-        <CheckCircle v-if="timer.isCompleted" :size="18" class="completed-icon" />
+        <component 
+          :is="timer.isCompleted ? CheckCircle : widgetIcon" 
+          :size="18" 
+          :class="timer.isCompleted ? 'completed-icon' : 'widget-icon'"
+          :style="{ color: timer.isCompleted ? undefined : timer.color }"
+        />
         <span class="timer-name" :class="{ 'completed-text': timer.isCompleted }">
           {{ timer.isCompleted ? '✓ ' : '' }}{{ timerLabel }}
         </span>
@@ -153,6 +187,11 @@ const dismissTimer = () => {
 .completed-icon {
   color: #22c55e;
   animation: bounce-in 0.5s ease-out;
+}
+
+.widget-icon {
+  opacity: 0.9;
+  transition: opacity 0.2s ease;
 }
 
 @keyframes bounce-in {

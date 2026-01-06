@@ -170,6 +170,8 @@ const startTimer = () => {
       paneId: activePaneId.value,
       startTimestamp: startTimestamp.value,
       timeRemainingAtStart: timeRemainingAtStart.value,
+      color: props.widget.color,
+      icon: 'timer',
     })
   } else {
     // Timer exists, just update the route and timestamps
