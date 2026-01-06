@@ -30,17 +30,14 @@ import { useRoute } from 'vue-router'
 import { useWidgetView } from './composables/useWidgetView'
 import { usePanes } from './composables/usePanes'
 import { useTasksStore } from './stores/tasks'
-import { useActiveTimers } from './composables/useActiveTimers'
 import ViewSubheader from './components/ViewSubheader.vue'
 import PaneTabs from './components/PaneTabs.vue'
 import ViewTabs from './components/ViewTabs.vue'
 import SubheaderButton from './components/SubheaderButton.vue'
-import ActiveTimerBar from './components/ActiveTimerBar.vue'
 import { getLatestChangelogDate } from './utils/changelog'
 
 const route = useRoute()
 const tasksStore = useTasksStore()
-const { activeTimers } = useActiveTimers()
 
 // Widget view mode (only for dashboard)
 const { isCompactView } = useWidgetView()
@@ -283,6 +280,8 @@ const checkForUpdates = async () => {
 
 const showUpdateNotification = () => {
   showUpdateModal.value = true
+  // Close mobile sidebar so the modal is visible
+  closeMobileSidebar()
 }
 
 const updateApp = () => {
@@ -654,11 +653,6 @@ onUnmounted(() => {
         </div>
       </div>
     </nav>
-
-    <!-- Active Timers Bars -->
-    <div v-if="activeTimers.length > 0" class="active-timers-container">
-      <ActiveTimerBar v-for="timer in activeTimers" :key="timer.id" :timer="timer" />
-    </div>
 
     <main :class="['content', { 'with-pane-tabs': isDashboard }]">
       <router-view v-slot="{ Component }">
@@ -1131,16 +1125,6 @@ body.study-mode .navbar {
 .nav-link.router-link-exact-active .nav-badge {
   background: rgba(255, 255, 255, 0.3);
   color: white;
-}
-
-.active-timers-container {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  background: var(--bg-primary);
-  position: relative;
-  z-index: 90;
-  flex-shrink: 0;
 }
 
 .content {
