@@ -847,66 +847,36 @@ const loadTasks = async (forceRefresh = false) => {
 
     totalApiCalls.value = apiCallCount
 
-    // Load inbox tasks
-    if (!forceRefresh) {
-      const cachedInbox = getCachedData('inbox')
-      if (cachedInbox) {
-        tasksStore.setInboxTasks(cachedInbox)
+    // Helper function to load task type with caching
+    const loadTaskType = async (
+      type: 'inbox' | 'active' | 'upcoming',
+      setter: (items: CraftTask[]) => void,
+    ) => {
+      const cached = getCachedData(type)
+      if (!forceRefresh && cached) {
+        setter(cached)
       } else {
-        const inboxResult = await fetchTasks('inbox')
-        tasksStore.setInboxTasks(inboxResult.items)
-        setCachedData('inbox', inboxResult.items)
+        const result = await fetchTasks(type)
+        setter(result.items)
+        setCachedData(type, result.items)
         completedApiCalls.value++
       }
-    } else {
-      const inboxResult = await fetchTasks('inbox')
-      tasksStore.setInboxTasks(inboxResult.items)
-      setCachedData('inbox', inboxResult.items)
-      completedApiCalls.value++
     }
 
-    // Load active tasks
-    if (!forceRefresh) {
-      const cachedActive = getCachedData('active')
-      if (cachedActive) {
-        tasksStore.setActiveTasks(cachedActive)
-      } else {
-        const activeResult = await fetchTasks('active')
-        tasksStore.setActiveTasks(activeResult.items)
-        setCachedData('active', activeResult.items)
-        completedApiCalls.value++
-      }
-    } else {
-      const activeResult = await fetchTasks('active')
-      tasksStore.setActiveTasks(activeResult.items)
-      setCachedData('active', activeResult.items)
-      completedApiCalls.value++
-    }
+    // Load all task types in parallel
+    await Promise.all([
+      loadTaskType('inbox', tasksStore.setInboxTasks),
+      loadTaskType('active', tasksStore.setActiveTasks),
+      loadTaskType('upcoming', tasksStore.setUpcomingTasks),
+    ])
 
-    // Load upcoming tasks
-    if (!forceRefresh) {
-      const cachedUpcoming = getCachedData('upcoming')
-      if (cachedUpcoming) {
-        tasksStore.setUpcomingTasks(cachedUpcoming)
-      } else {
-        const upcomingResult = await fetchTasks('upcoming')
-        tasksStore.setUpcomingTasks(upcomingResult.items)
-        setCachedData('upcoming', upcomingResult.items)
-        completedApiCalls.value++
-      }
-    } else {
-      const upcomingResult = await fetchTasks('upcoming')
-      tasksStore.setUpcomingTasks(upcomingResult.items)
-      setCachedData('upcoming', upcomingResult.items)
-      completedApiCalls.value++
-    }
+    // Load daily notes and calendar events in parallel
+    const [dailyNotesMadeCall, calendarMadeCall] = await Promise.all([
+      loadDailyNotes(forceRefresh),
+      loadCalendarEvents(forceRefresh),
+    ])
 
-    // Load daily notes (with caching)
-    const dailyNotesMadeCall = await loadDailyNotes(forceRefresh)
     if (dailyNotesMadeCall) completedApiCalls.value++
-
-    // Load calendar events
-    const calendarMadeCall = await loadCalendarEvents(forceRefresh)
     if (calendarMadeCall) completedApiCalls.value++
   } catch (err) {
     errorMessage.value = err instanceof Error ? err.message : 'Failed to load tasks'

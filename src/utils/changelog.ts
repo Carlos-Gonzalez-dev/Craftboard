@@ -5,6 +5,10 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: '2026-01-07v2',
+    changes: ['Persist tasks on local storage to avoid losing them on refresh'],
+  },
+  {
     date: '2026-01-07',
     changes: ['Improved Tags view'],
   },
