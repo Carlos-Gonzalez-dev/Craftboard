@@ -31,6 +31,7 @@ import { useRoute } from 'vue-router'
 import { useWidgetView } from './composables/useWidgetView'
 import { usePanes } from './composables/usePanes'
 import { useActiveTimers } from './composables/useActiveTimers'
+import { useBadgeAndTitle } from './composables/useBadgeAndTitle'
 import { useTasksStore } from './stores/tasks'
 import ViewSubheader from './components/ViewSubheader.vue'
 import PaneTabs from './components/PaneTabs.vue'
@@ -42,6 +43,7 @@ import { getLatestChangelogDate } from './utils/changelog'
 const route = useRoute()
 const tasksStore = useTasksStore()
 const { activeTimers } = useActiveTimers()
+const { todayTasksCount } = useBadgeAndTitle()
 
 // Widget view mode (only for dashboard)
 const { isCompactView } = useWidgetView()
