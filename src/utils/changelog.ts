@@ -9,6 +9,7 @@ export const changelog: ChangelogEntry[] = [
     changes: [
       'Persist tasks on local storage to avoid losing them on refresh',
       'Add task count on installed web app (PWA) badge',
+      'Tags can now be viewed as chart in tag view',
     ],
   },
   {

@@ -655,16 +655,31 @@ const chartLogsForPeriods = computed(() => {
 
 // Get tag occurrences grouped by week
 const tagOccurrencesByWeek = computed(() => {
-  const now = new Date()
   const weekData = new Map<string, Map<string, number>>()
+  
+  if (logs.value.length === 0) return weekData
 
-  // Initialize last 8 weeks
-  for (let i = 7; i >= 0; i--) {
-    const weekStart = new Date(now)
-    weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + i * 7))
-    weekStart.setHours(0, 0, 0, 0)
+  // Find min and max dates from logs
+  let minDate = new Date(logs.value[0].createdAt || new Date())
+  let maxDate = new Date()
+
+  logs.value.forEach((log) => {
+    if (log.createdAt) {
+      const date = new Date(log.createdAt)
+      if (date < minDate) minDate = date
+      if (date > maxDate) maxDate = date
+    }
+  })
+
+  // Generate weeks from minDate to maxDate
+  const weekStart = new Date(minDate)
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay())
+  weekStart.setHours(0, 0, 0, 0)
+
+  while (weekStart <= maxDate) {
     const weekKey = weekStart.toISOString().split('T')[0] || ''
     weekData.set(weekKey, new Map<string, number>())
+    weekStart.setDate(weekStart.getDate() + 7)
   }
 
   // Count tags per week
@@ -689,14 +704,29 @@ const tagOccurrencesByWeek = computed(() => {
 
 // Get tag occurrences grouped by month
 const tagOccurrencesByMonth = computed(() => {
-  const now = new Date()
   const monthData = new Map<string, Map<string, number>>()
 
-  // Initialize last 12 months
-  for (let i = 11; i >= 0; i--) {
-    const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
+  if (logs.value.length === 0) return monthData
+
+  // Find min and max dates from logs
+  let minDate = new Date(logs.value[0].createdAt || new Date())
+  let maxDate = new Date()
+
+  logs.value.forEach((log) => {
+    if (log.createdAt) {
+      const date = new Date(log.createdAt)
+      if (date < minDate) minDate = date
+      if (date > maxDate) maxDate = date
+    }
+  })
+
+  // Generate months from minDate to maxDate
+  const monthStart = new Date(minDate.getFullYear(), minDate.getMonth(), 1)
+
+  while (monthStart <= maxDate) {
     const monthKey = (monthStart.toISOString().split('T')[0] || '').slice(0, 7) // YYYY-MM
     monthData.set(monthKey, new Map<string, number>())
+    monthStart.setMonth(monthStart.getMonth() + 1)
   }
 
   // Count tags per month
@@ -720,10 +750,22 @@ const tagOccurrencesByMonth = computed(() => {
 const tagOccurrencesByYear = computed(() => {
   const yearData = new Map<string, Map<string, number>>()
 
-  // Initialize last 5 years
-  const now = new Date()
-  for (let i = 4; i >= 0; i--) {
-    const year = now.getFullYear() - i
+  if (logs.value.length === 0) return yearData
+
+  // Find min and max dates from logs
+  let minDate = new Date(logs.value[0].createdAt || new Date())
+  let maxDate = new Date()
+
+  logs.value.forEach((log) => {
+    if (log.createdAt) {
+      const date = new Date(log.createdAt)
+      if (date < minDate) minDate = date
+      if (date > maxDate) maxDate = date
+    }
+  })
+
+  // Generate years from minDate to maxDate
+  for (let year = minDate.getFullYear(); year <= maxDate.getFullYear(); year++) {
     const yearKey = year.toString()
     yearData.set(yearKey, new Map<string, number>())
   }
@@ -1087,19 +1129,19 @@ onMounted(() => {
                   @click="chartPeriod = 'week'"
                   :class="['chart-period-button', { active: chartPeriod === 'week' }]"
                 >
-                  Last 8 weeks
+                  Weeks
                 </button>
                 <button
                   @click="chartPeriod = 'month'"
                   :class="['chart-period-button', { active: chartPeriod === 'month' }]"
                 >
-                  Last 12 months
+                  Months
                 </button>
                 <button
                   @click="chartPeriod = 'year'"
                   :class="['chart-period-button', { active: chartPeriod === 'year' }]"
                 >
-                  Last 5 years
+                  Years
                 </button>
               </div>
 
@@ -1667,13 +1709,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 12px;
   position: relative;
   width: 100%;
-  padding-left: 100px;
-  padding-right: 12px;
-  padding-top: 12px;
-  padding-bottom: 12px;
+  padding: 12px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
@@ -1690,17 +1729,15 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 2px;
   font-size: 11px;
   text-align: left;
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: auto;
-  white-space: nowrap;
+  position: relative;
+  width: 100%;
+  white-space: normal;
   flex-shrink: 0;
+  margin-bottom: 4px;
 }
 
 .period-label .label-line1 {
@@ -2085,6 +2122,28 @@ onMounted(() => {
 
   .col-content {
     max-width: 300px;
+  }
+
+  .period-label .label-line1 {
+    font-size: 10px;
+  }
+
+  .period-label .label-line2 {
+    font-size: 8px;
+  }
+
+  .chart-label-tag {
+    width: 60px;
+    font-size: 11px;
+  }
+
+  .tag-bar {
+    height: 20px;
+  }
+
+  .chart-total {
+    font-size: 11px;
+    min-width: 28px;
   }
 }
 </style>
