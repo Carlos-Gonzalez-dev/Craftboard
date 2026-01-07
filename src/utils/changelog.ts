@@ -6,7 +6,10 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: '2026-01-07v2',
-    changes: ['Persist tasks on local storage to avoid losing them on refresh'],
+    changes: [
+      'Persist tasks on local storage to avoid losing them on refresh',
+      'Add task count on installed web app (PWA) badge',
+    ],
   },
   {
     date: '2026-01-07',
