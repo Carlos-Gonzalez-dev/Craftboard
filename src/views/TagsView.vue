@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, inject, h, watch } from 'vue'
-import { Clock, RefreshCw, ExternalLink, Plus, X, Search } from 'lucide-vue-next'
+import { Clock, RefreshCw, ExternalLink, Plus, X, Search, BarChart3, List } from 'lucide-vue-next'
 import { getApiUrl, openCraftLink, getCacheExpiryMs } from '../utils/craftApi'
-import { useRoute, useRouter } from 'vue-router'
-import ViewSubheader from '../components/ViewSubheader.vue'
-import ViewTabs from '../components/ViewTabs.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
+import ViewTabs from '../components/ViewTabs.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
 
-const route = useRoute()
-const router = useRouter()
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
 const setSubheader =
@@ -35,9 +31,21 @@ const completedApiCalls = ref(0)
 const searchQuery = ref('')
 const selectedTags = ref<Set<string>>(new Set())
 const selectedPeriod = ref<string>('all')
+const chartPeriod = ref<'week' | 'month' | 'year'>('year')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const showAddTagModal = ref(false)
 const newTag = ref('')
+
+// View mode with localStorage persistence
+const VIEW_MODE_STORAGE_KEY = 'tags-view-mode'
+const viewMode = ref<'table' | 'chart'>(
+  (localStorage.getItem(VIEW_MODE_STORAGE_KEY) as 'table' | 'chart') || 'table',
+)
+
+// Watch view mode changes and save to localStorage
+watch(viewMode, (newMode) => {
+  localStorage.setItem(VIEW_MODE_STORAGE_KEY, newMode)
+})
 
 // Load tags from localStorage
 const STORAGE_KEY = 'craftboard-tags'
@@ -557,12 +565,295 @@ const getContentParts = (text: string): ContentPart[] => {
   return parts
 }
 
-// Tabs for tags
-const tabs = computed(() => {
-  return [
-    { id: '', label: 'All' },
-    ...savedTags.value.map((tag) => ({ id: tag, label: `#${tag}` })),
-  ]
+// Get logs for the selected period and tags (for charting)
+const chartLogs = computed(() => {
+  let items = logs.value
+
+  // Apply time period filter
+  if (selectedPeriod.value !== 'all') {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth()
+
+    items = items.filter((item) => {
+      if (!item.createdAt) return false
+      const itemDate = new Date(item.createdAt)
+
+      switch (selectedPeriod.value) {
+        case 'month':
+          return itemDate.getFullYear() === currentYear && itemDate.getMonth() === currentMonth
+        case 'quarter': {
+          const currentQuarter = Math.floor(currentMonth / 3)
+          const itemQuarter = Math.floor(itemDate.getMonth() / 3)
+          return itemDate.getFullYear() === currentYear && itemQuarter === currentQuarter
+        }
+        case 'semester': {
+          const currentSemester = Math.floor(currentMonth / 6)
+          const itemSemester = Math.floor(itemDate.getMonth() / 6)
+          return itemDate.getFullYear() === currentYear && itemSemester === currentSemester
+        }
+        case 'year':
+          return itemDate.getFullYear() === currentYear
+        case 'lastyear':
+          return itemDate.getFullYear() === currentYear - 1
+        default:
+          return true
+      }
+    })
+  }
+
+  // Apply tag filters (must have ALL selected tags)
+  if (selectedTags.value.size > 0) {
+    items = items.filter((item) => {
+      if (!item.tags || item.tags.length === 0) return false
+      return Array.from(selectedTags.value).every((tag) => item.tags.includes(tag))
+    })
+  }
+
+  return items
+})
+
+// Get logs for periods only (no tag filter) - for initializing all available time periods
+const chartLogsForPeriods = computed(() => {
+  let items = logs.value
+
+  // Apply time period filter only (no tag filter)
+  if (selectedPeriod.value !== 'all') {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth()
+
+    items = items.filter((item) => {
+      if (!item.createdAt) return false
+      const itemDate = new Date(item.createdAt)
+
+      switch (selectedPeriod.value) {
+        case 'month':
+          return itemDate.getFullYear() === currentYear && itemDate.getMonth() === currentMonth
+        case 'quarter': {
+          const currentQuarter = Math.floor(currentMonth / 3)
+          const itemQuarter = Math.floor(itemDate.getMonth() / 3)
+          return itemDate.getFullYear() === currentYear && itemQuarter === currentQuarter
+        }
+        case 'semester': {
+          const currentSemester = Math.floor(currentMonth / 6)
+          const itemSemester = Math.floor(itemDate.getMonth() / 6)
+          return itemDate.getFullYear() === currentYear && itemSemester === currentSemester
+        }
+        case 'year':
+          return itemDate.getFullYear() === currentYear
+        case 'lastyear':
+          return itemDate.getFullYear() === currentYear - 1
+        default:
+          return true
+      }
+    })
+  }
+
+  return items
+})
+
+// Get tag occurrences grouped by week
+const tagOccurrencesByWeek = computed(() => {
+  const now = new Date()
+  const weekData = new Map<string, Map<string, number>>()
+
+  // Initialize last 8 weeks
+  for (let i = 7; i >= 0; i--) {
+    const weekStart = new Date(now)
+    weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + i * 7))
+    weekStart.setHours(0, 0, 0, 0)
+    const weekKey = weekStart.toISOString().split('T')[0] || ''
+    weekData.set(weekKey, new Map<string, number>())
+  }
+
+  // Count tags per week
+  logs.value.forEach((log) => {
+    if (!log.createdAt) return
+    const logDate = new Date(log.createdAt)
+    const weekStart = new Date(logDate)
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay())
+    weekStart.setHours(0, 0, 0, 0)
+    const weekKey = weekStart.toISOString().split('T')[0] || ''
+
+    if (weekData.has(weekKey)) {
+      const weekTags = weekData.get(weekKey)!
+      log.tags.forEach((tag) => {
+        weekTags.set(tag, (weekTags.get(tag) || 0) + 1)
+      })
+    }
+  })
+
+  return weekData
+})
+
+// Get tag occurrences grouped by month
+const tagOccurrencesByMonth = computed(() => {
+  const now = new Date()
+  const monthData = new Map<string, Map<string, number>>()
+
+  // Initialize last 12 months
+  for (let i = 11; i >= 0; i--) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const monthKey = (monthStart.toISOString().split('T')[0] || '').slice(0, 7) // YYYY-MM
+    monthData.set(monthKey, new Map<string, number>())
+  }
+
+  // Count tags per month
+  logs.value.forEach((log) => {
+    if (!log.createdAt) return
+    const logDate = new Date(log.createdAt)
+    const monthKey = (logDate.toISOString().split('T')[0] || '').slice(0, 7)
+
+    if (monthData.has(monthKey)) {
+      const monthTags = monthData.get(monthKey)!
+      log.tags.forEach((tag) => {
+        monthTags.set(tag, (monthTags.get(tag) || 0) + 1)
+      })
+    }
+  })
+
+  return monthData
+})
+
+// Get tag occurrences grouped by year
+const tagOccurrencesByYear = computed(() => {
+  const yearData = new Map<string, Map<string, number>>()
+
+  // Initialize last 5 years
+  const now = new Date()
+  for (let i = 4; i >= 0; i--) {
+    const year = now.getFullYear() - i
+    const yearKey = year.toString()
+    yearData.set(yearKey, new Map<string, number>())
+  }
+
+  // Count tags per year
+  logs.value.forEach((log) => {
+    if (!log.createdAt) return
+    const logDate = new Date(log.createdAt)
+    const yearKey = logDate.getFullYear().toString()
+
+    if (yearData.has(yearKey)) {
+      const yearTags = yearData.get(yearKey)!
+      log.tags.forEach((tag) => {
+        yearTags.set(tag, (yearTags.get(tag) || 0) + 1)
+      })
+    }
+  })
+
+  return yearData
+})
+
+// Get chart data based on selected period
+const chartData = computed(() => {
+  if (chartPeriod.value === 'week') {
+    return tagOccurrencesByWeek.value
+  } else if (chartPeriod.value === 'month') {
+    return tagOccurrencesByMonth.value
+  } else {
+    return tagOccurrencesByYear.value
+  }
+})
+
+// Get max total count in chart data for proportional sizing
+const maxChartCount = computed(() => {
+  let max = 0
+  filteredChartData.value.forEach((tags) => {
+    const total = Array.from(tags.values()).reduce((a, b) => a + b, 0)
+    if (total > max) max = total
+  })
+  return Math.max(max, 1)
+})
+
+// Filter chart data to show only selected tags if any are selected
+const filteredChartData = computed(() => {
+  if (selectedTags.value.size === 0) {
+    // No tags selected, show all
+    return chartData.value
+  }
+
+  // Filter each period's data to only include selected tags
+  const filtered = new Map<string, Map<string, number>>()
+
+  chartData.value.forEach((tags, key) => {
+    const filteredTags = new Map<string, number>()
+    selectedTags.value.forEach((tag) => {
+      const count = tags.get(tag)
+      if (count) {
+        filteredTags.set(tag, count)
+      }
+    })
+    if (filteredTags.size > 0) {
+      filtered.set(key, filteredTags)
+    }
+  })
+
+  return filtered
+})
+
+// Get chart labels based on period
+const getChartLabel = (key: string): string => {
+  if (chartPeriod.value === 'week') {
+    return new Date(key + 'T00:00:00').toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    })
+  } else if (chartPeriod.value === 'month') {
+    return new Date(key + '-01T00:00:00').toLocaleDateString('en-US', {
+      month: 'short',
+      year: '2-digit',
+    })
+  } else {
+    return key
+  }
+}
+
+// Get chart height multiplier based on period
+const getChartHeightMultiplier = (): number => {
+  if (chartPeriod.value === 'week') return 4
+  if (chartPeriod.value === 'month') return 2
+  return 1.5
+}
+
+// Get chart data for display (filtered by selected tags if any)
+const getChartDataForPeriod = (tags: Map<string, number>): Array<[string, number]> => {
+  if (selectedTags.value.size > 0) {
+    return Array.from(tags.entries())
+      .filter(([t]) => selectedTags.value.has(t))
+      .sort((a, b) => b[1] - a[1])
+  }
+  return Array.from(tags.entries()).sort((a, b) => b[1] - a[1])
+}
+
+// Get chart total for display (filtered by selected tags if any)
+const getChartTotal = (tags: Map<string, number>): number => {
+  if (selectedTags.value.size > 0) {
+    return Array.from(tags.entries())
+      .filter(([t]) => selectedTags.value.has(t))
+      .reduce((a, b) => a + b[1], 0)
+  }
+  return Array.from(tags.values()).reduce((a, b) => a + b, 0)
+}
+
+// Get top tags for current period
+const topTags = computed(() => {
+  const counts = new Map<string, number>()
+
+  chartLogs.value.forEach((log) => {
+    log.tags.forEach((tag) => {
+      counts.set(tag, (counts.get(tag) || 0) + 1)
+    })
+  })
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([tag, count]) => ({
+      tag,
+      count,
+      percentage: (count / chartLogs.value.length) * 100,
+    }))
 })
 
 onMounted(() => {
@@ -572,9 +863,21 @@ onMounted(() => {
   // Register refresh function
   registerRefresh?.('tags', () => loadLogs(true))
 
-  // Set subheader
+  // Set subheader with view mode toggle
   setSubheader?.({
     right: () => [
+      h(ViewTabs, {
+        tabs: [
+          { id: 'table', label: 'Table', icon: List },
+          { id: 'chart', label: 'Chart', icon: BarChart3 },
+        ],
+        activeTab: viewMode.value,
+        'onUpdate:activeTab': (tab: string) => {
+          if (tab === 'table' || tab === 'chart') {
+            viewMode.value = tab as 'table' | 'chart'
+          }
+        },
+      }),
       h(
         SubheaderButton,
         {
@@ -605,7 +908,7 @@ onMounted(() => {
   <div class="tags-view">
     <ProgressIndicator
       v-if="isLoading"
-      :current="completedApiCalls"
+      :completed="completedApiCalls"
       :total="totalApiCalls"
       message="Loading tags..."
     />
@@ -623,39 +926,56 @@ onMounted(() => {
     <template v-else>
       <div class="tags-content">
         <div class="tags-container">
-          <div
-            v-if="logs.length > 0 || searchQuery || selectedTags.size > 0"
-            class="tags-tab-content"
-          >
-            <!-- Search and Filters -->
-            <div class="tags-filters">
-              <div class="search-container">
-                <Search :size="18" class="search-icon" />
-                <input
-                  v-model="searchQuery"
-                  type="text"
-                  placeholder="Search tags..."
-                  class="search-input"
-                />
+          <!-- Shared Filters Section -->
+          <div v-if="logs.length > 0" class="shared-filters">
+            <!-- Search -->
+            <div class="search-container">
+              <Search :size="18" class="search-icon" />
+              <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="Search tags..."
+                class="search-input"
+              />
+              <button
+                v-if="searchQuery"
+                @click="searchQuery = ''"
+                class="clear-search-button"
+                title="Clear search"
+              >
+                <X :size="16" />
+              </button>
+              <button
+                @click="clearFilters"
+                class="clear-filters-icon-button"
+                :disabled="selectedTags.size === 0 && !searchQuery && selectedPeriod === 'all'"
+                title="Clear filters"
+              >
+                <X :size="18" />
+              </button>
+            </div>
+
+            <!-- Tag Filters -->
+            <div v-if="allTags.length > 0" class="tags-filter">
+              <div class="tags-list">
                 <button
-                  v-if="searchQuery"
-                  @click="searchQuery = ''"
-                  class="clear-search-button"
-                  title="Clear search"
+                  v-for="tag in displayTags"
+                  :key="tag"
+                  @click="toggleTag(tag)"
+                  :class="['tag-filter-button', { active: selectedTags.has(tag) }]"
+                  :style="getTagColor(tag)"
                 >
-                  <X :size="16" />
-                </button>
-                <button
-                  @click="clearFilters"
-                  class="clear-filters-icon-button"
-                  :disabled="selectedTags.size === 0 && !searchQuery && selectedPeriod === 'all'"
-                  title="Clear filters"
-                >
-                  <X :size="18" />
+                  #{{ tag }}
+                  <span class="tag-count">{{ tagCounts.get(tag) || 0 }}</span>
                 </button>
               </div>
+            </div>
+          </div>
 
-              <!-- Time Period Filter -->
+          <!-- TABLE VIEW -->
+          <template v-if="viewMode === 'table'">
+            <div v-if="logs.length > 0" class="table-view">
+              <!-- Time Period Filter (only for table) -->
               <div class="period-filter">
                 <button
                   v-for="period in [
@@ -674,93 +994,145 @@ onMounted(() => {
                 </button>
               </div>
 
-              <div v-if="allTags.length > 0" class="tags-filter">
-                <div class="tags-list">
-                  <button
-                    v-for="tag in displayTags"
-                    :key="tag"
-                    @click="toggleTag(tag)"
-                    :class="['tag-filter-button', { active: selectedTags.has(tag) }]"
-                    :style="getTagColor(tag)"
-                  >
-                    #{{ tag }}
-                    <span class="tag-count">{{ tagCounts.get(tag) || 0 }}</span>
-                  </button>
+              <div v-if="filteredLogs.length === 0" class="no-results">
+                <p>No documents found matching your filters.</p>
+              </div>
+
+              <div v-else class="table-container">
+                <table class="logs-table">
+                  <thead>
+                    <tr>
+                      <th
+                        class="col-created sortable"
+                        @click="toggleSortOrder"
+                        title="Click to toggle sort order"
+                      >
+                        Created
+                        <span class="sort-indicator">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
+                      </th>
+                      <th class="col-modified">Modified</th>
+                      <th class="col-content">Content</th>
+                      <th class="col-action"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="(entry, index) in filteredLogs"
+                      :key="`${entry.documentId}-${index}`"
+                      class="log-row"
+                      @click="openLog(entry)"
+                    >
+                      <td class="col-created">
+                        <div class="date-cell">
+                          <div class="date">{{ formatDate(entry.createdAt) }}</div>
+                          <div class="time">{{ formatTime(entry.createdAt) }}</div>
+                        </div>
+                      </td>
+                      <td class="col-modified">
+                        <div class="date-cell">
+                          <div class="date">{{ formatDate(entry.lastModifiedAt) }}</div>
+                          <div class="time">{{ formatTime(entry.lastModifiedAt) }}</div>
+                        </div>
+                      </td>
+                      <td class="col-content">
+                        <div class="content-cell">
+                          <span v-for="(part, i) in getContentParts(entry.markdown)" :key="i">
+                            <template v-if="part.type === 'text'">{{ part.value }}</template>
+                            <template v-else>
+                              <span
+                                class="tag-badge inline"
+                                :style="getTagColor(part.value)"
+                                @click.stop="filterByTag(part.value)"
+                                :title="`Filter by #${part.value}`"
+                              >
+                                #{{ part.value }}
+                              </span>
+                            </template>
+                          </span>
+                        </div>
+                      </td>
+                      <td class="col-action">
+                        <ExternalLink :size="16" class="action-icon" />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div v-else class="empty-state">
+              <Clock :size="48" />
+              <p>No documents found</p>
+              <p class="hint">No documents with these tags were found</p>
+            </div>
+          </template>
+
+          <!-- CHART VIEW -->
+          <template v-if="viewMode === 'chart'">
+            <div v-if="logs.length > 0" class="chart-view">
+              <!-- Chart Period Selector -->
+              <div class="chart-period-buttons">
+                <button
+                  @click="chartPeriod = 'week'"
+                  :class="['chart-period-button', { active: chartPeriod === 'week' }]"
+                >
+                  Week
+                </button>
+                <button
+                  @click="chartPeriod = 'month'"
+                  :class="['chart-period-button', { active: chartPeriod === 'month' }]"
+                >
+                  Month
+                </button>
+                <button
+                  @click="chartPeriod = 'year'"
+                  :class="['chart-period-button', { active: chartPeriod === 'year' }]"
+                >
+                  Year
+                </button>
+              </div>
+
+              <div v-if="chartData.size === 0" class="no-results">
+                <p>No data available for the selected period.</p>
+              </div>
+
+              <div v-else class="chart-container">
+                <div class="timeline-chart">
+                  <div v-for="[key, tags] of chartData.entries()" :key="key" class="chart-bar">
+                    <div class="chart-label">{{ getChartLabel(key) }}</div>
+                    <div
+                      class="stacked-bar"
+                      :style="{
+                        height:
+                          ((Array.from(tags.values()).reduce((a, b) => a + b, 0) || 1) /
+                            maxChartCount) *
+                            120 +
+                          'px',
+                      }"
+                    >
+                      <div
+                        v-for="[tag, count] of getChartDataForPeriod(tags)"
+                        :key="`${key}-${tag}`"
+                        class="bar-segment"
+                        :style="{
+                          ...getTagColor(tag),
+                          height: (count / maxChartCount) * 120 + 'px',
+                        }"
+                        :title="`${tag}: ${count}`"
+                      ></div>
+                    </div>
+                    <div class="chart-total">
+                      {{ getChartTotal(tags) }}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-
-            <div v-if="filteredLogs.length === 0" class="no-results">
-              <p>No documents found matching your filters.</p>
+            <div v-else class="empty-state">
+              <Clock :size="48" />
+              <p>No documents found</p>
+              <p class="hint">No documents with these tags were found</p>
             </div>
-
-            <div v-else class="table-container">
-              <table class="logs-table">
-                <thead>
-                  <tr>
-                    <th
-                      class="col-created sortable"
-                      @click="toggleSortOrder"
-                      title="Click to toggle sort order"
-                    >
-                      Created
-                      <span class="sort-indicator">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
-                    </th>
-                    <th class="col-modified">Modified</th>
-                    <th class="col-content">Content</th>
-                    <th class="col-action"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="(entry, index) in filteredLogs"
-                    :key="`${entry.documentId}-${index}`"
-                    class="log-row"
-                    @click="openLog(entry)"
-                  >
-                    <td class="col-created">
-                      <div class="date-cell">
-                        <div class="date">{{ formatDate(entry.createdAt) }}</div>
-                        <div class="time">{{ formatTime(entry.createdAt) }}</div>
-                      </div>
-                    </td>
-                    <td class="col-modified">
-                      <div class="date-cell">
-                        <div class="date">{{ formatDate(entry.lastModifiedAt) }}</div>
-                        <div class="time">{{ formatTime(entry.lastModifiedAt) }}</div>
-                      </div>
-                    </td>
-                    <td class="col-content">
-                      <div class="content-cell">
-                        <span v-for="(part, i) in getContentParts(entry.markdown)" :key="i">
-                          <template v-if="part.type === 'text'">{{ part.value }}</template>
-                          <template v-else>
-                            <span
-                              class="tag-badge inline"
-                              :style="getTagColor(part.value)"
-                              @click.stop="filterByTag(part.value)"
-                              :title="`Filter by #${part.value}`"
-                            >
-                              #{{ part.value }}
-                            </span>
-                          </template>
-                        </span>
-                      </div>
-                    </td>
-                    <td class="col-action">
-                      <ExternalLink :size="16" class="action-icon" />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div v-else-if="!isLoading && logs.length === 0" class="empty-state">
-            <Clock :size="48" />
-            <p>No documents found</p>
-            <p class="hint">No documents with these tags were found</p>
-          </div>
+          </template>
         </div>
       </div>
     </template>
@@ -848,12 +1220,9 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 20px;
-}
-
-.tags-content:has(.tags-container) {
+  gap: 0;
   padding: 8px 16px;
+  overflow-y: auto;
 }
 
 .tags-container {
@@ -864,22 +1233,24 @@ onMounted(() => {
   min-height: 0;
 }
 
-.tags-tab-content {
-  flex: 1;
-  padding-top: 0;
-  overflow-y: auto;
-  min-height: 0;
+/* Shared filters section */
+.shared-filters {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-primary);
 }
 
-.tags-filters {
+/* Table and Chart Views */
+.table-view,
+.chart-view {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-primary);
+  overflow-y: auto;
+  padding: 16px 0;
 }
 
 .search-container {
@@ -971,6 +1342,8 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .period-button {
@@ -1102,11 +1475,11 @@ onMounted(() => {
 }
 
 .table-container {
-  flex: 1;
   overflow: auto;
   border: 1px solid var(--border-primary);
   border-radius: 8px;
   background: var(--bg-primary);
+  max-height: 600px;
 }
 
 .logs-table {
@@ -1236,6 +1609,68 @@ onMounted(() => {
 [data-theme='dark'] .tag-badge:hover {
   background: hsl(var(--tag-hue, 220), 65%, 50%);
   border-color: hsl(var(--tag-hue, 220), 65%, 50%);
+}
+
+.chart-period-buttons {
+  display: flex;
+  gap: 6px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.chart-period-button {
+  padding: 6px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chart-period-button:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
+}
+
+.chart-period-button.active {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: white;
+}
+
+.chart-period-button.active:hover {
+  background: var(--btn-primary-hover);
+  border-color: var(--btn-primary-hover);
+}
+
+.chart-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.chart-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  margin-bottom: 4px;
+}
+
+.chart-total {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 2px;
 }
 
 .content-cell {
@@ -1429,6 +1864,137 @@ onMounted(() => {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Analytics Charts */
+.analytics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.chart-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Bar Chart */
+.bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bar-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tag-name {
+  color: var(--text-primary);
+}
+
+.bar-value {
+  color: var(--text-secondary);
+}
+
+.bar-background {
+  height: 24px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: hsl(var(--tag-hue, 220), 70%, 50%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  min-width: 2%;
+}
+
+[data-theme='dark'] .bar-fill {
+  background: hsl(var(--tag-hue, 220), 65%, 45%);
+}
+
+/* Timeline Chart */
+.timeline-chart {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  overflow-x: auto;
+  padding: 8px 0;
+  min-height: 120px;
+}
+
+.chart-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.chart-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  margin-bottom: 4px;
+}
+
+.stacked-bar {
+  width: 28px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  overflow: hidden;
+  gap: 1px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.stacked-bar:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] .stacked-bar:hover {
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.1);
+}
+
+.bar-segment {
+  background: hsl(var(--tag-hue, 220), 70%, 50%);
+  transition: all 0.2s ease;
+  min-height: 2px;
+}
+
+[data-theme='dark'] .bar-segment {
+  background: hsl(var(--tag-hue, 220), 65%, 45%);
+}
+
+.chart-total {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 2px;
 }
 
 /* Mobile responsiveness */
