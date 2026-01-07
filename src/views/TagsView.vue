@@ -482,13 +482,36 @@ interface ContentPart {
   value: string
 }
 
+// Keep only lines that contain at least one user-added tag
+const filterLinesWithSavedTags = (text: string): string => {
+  if (!text) return ''
+
+  const allowed = new Set(savedTags.value)
+  const lines = text.split(/\r?\n/)
+
+  const filtered = lines.filter((line) => {
+    const tagsInLine = [...line.matchAll(/#([\w-]+(?:\/[\w-]+)*)/gi)].map((m) =>
+      m[1] ? m[1].toLowerCase() : '',
+    )
+
+    if (tagsInLine.length === 0) return false
+
+    // Keep line only if it contains a tag the user added
+    return tagsInLine.some((tag) => allowed.has(tag))
+  })
+
+  return filtered.join(' | ')
+}
+
 const getContentParts = (text: string): ContentPart[] => {
   const parts: ContentPart[] = []
+  const allowed = new Set(savedTags.value)
+  const filteredText = filterLinesWithSavedTags(text)
   const regex = /#([\w-]+(?:\/[\w-]+)*)/gi
   let lastIndex = 0
   let match: RegExpExecArray | null
 
-  while ((match = regex.exec(text)) !== null) {
+  while ((match = regex.exec(filteredText)) !== null) {
     const start = match.index
     const end = start + match[0].length
 
@@ -496,27 +519,30 @@ const getContentParts = (text: string): ContentPart[] => {
     let prefixStart = start
     while (
       prefixStart > lastIndex &&
-      (text.charAt(prefixStart - 1) === '*' || text.charAt(prefixStart - 1) === '_')
+      (filteredText.charAt(prefixStart - 1) === '*' || filteredText.charAt(prefixStart - 1) === '_')
     ) {
       prefixStart--
     }
     let suffixEnd = end
     while (
-      suffixEnd < text.length &&
-      (text.charAt(suffixEnd) === '*' || text.charAt(suffixEnd) === '_')
+      suffixEnd < filteredText.length &&
+      (filteredText.charAt(suffixEnd) === '*' || filteredText.charAt(suffixEnd) === '_')
     ) {
       suffixEnd++
     }
 
     // Add preceding text (excluding markdown wrappers)
     if (prefixStart > lastIndex) {
-      parts.push({ type: 'text', value: text.slice(lastIndex, prefixStart) })
+      parts.push({ type: 'text', value: filteredText.slice(lastIndex, prefixStart) })
     }
 
     // Add tag without #
     const tag = match[1] ? match[1].toLowerCase() : ''
-    if (tag) {
+    if (tag && allowed.has(tag)) {
       parts.push({ type: 'tag', value: tag })
+    } else if (tag) {
+      // If tag not allowed, treat as plain text to avoid showing it as a badge
+      parts.push({ type: 'text', value: filteredText.slice(start, end) })
     }
 
     // Advance lastIndex past the tag and any wrappers
@@ -524,8 +550,8 @@ const getContentParts = (text: string): ContentPart[] => {
   }
 
   // Add remaining text
-  if (lastIndex < text.length) {
-    parts.push({ type: 'text', value: text.slice(lastIndex) })
+  if (lastIndex < filteredText.length) {
+    parts.push({ type: 'text', value: filteredText.slice(lastIndex) })
   }
 
   return parts
@@ -1215,9 +1241,8 @@ onMounted(() => {
 .content-cell {
   color: var(--text-primary);
   line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .action-icon {
