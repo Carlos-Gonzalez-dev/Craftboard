@@ -757,6 +757,16 @@ const chartData = computed(() => {
 })
 
 // Get max total count in chart data for proportional sizing
+// Get max count for scaling - always based on unfiltered data for consistent heights
+const maxChartCountGlobal = computed(() => {
+  let max = 0
+  chartData.value.forEach((tags) => {
+    const total = Array.from(tags.values()).reduce((a, b) => a + b, 0)
+    if (total > max) max = total
+  })
+  return Math.max(max, 1)
+})
+
 const maxChartCount = computed(() => {
   let max = 0
   filteredChartData.value.forEach((tags) => {
@@ -793,19 +803,23 @@ const filteredChartData = computed(() => {
 })
 
 // Get chart labels based on period
-const getChartLabel = (key: string): string => {
+const getChartLabel = (key: string): { line1: string; line2?: string } => {
   if (chartPeriod.value === 'week') {
-    return new Date(key + 'T00:00:00').toLocaleDateString('en-US', {
+    const date = new Date(key + 'T00:00:00')
+    const line1 = date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
     })
+    const year = date.getFullYear().toString()
+    return { line1, line2: year }
   } else if (chartPeriod.value === 'month') {
-    return new Date(key + '-01T00:00:00').toLocaleDateString('en-US', {
+    const line1 = new Date(key + '-01T00:00:00').toLocaleDateString('en-US', {
       month: 'short',
       year: '2-digit',
     })
+    return { line1 }
   } else {
-    return key
+    return { line1: key }
   }
 }
 
@@ -818,12 +832,14 @@ const getChartHeightMultiplier = (): number => {
 
 // Get chart data for display (filtered by selected tags if any)
 const getChartDataForPeriod = (tags: Map<string, number>): Array<[string, number]> => {
-  if (selectedTags.value.size > 0) {
-    return Array.from(tags.entries())
-      .filter(([t]) => selectedTags.value.has(t))
-      .sort((a, b) => b[1] - a[1])
-  }
-  return Array.from(tags.entries()).sort((a, b) => b[1] - a[1])
+  // Determine which tags to show: either selected tags or all display tags
+  const tagsToShow = selectedTags.value.size > 0 ? selectedTags.value : new Set(displayTags.value)
+
+  // Include all tags to show, even if they have no data in this period
+  const result: Array<[string, number]> = Array.from(tagsToShow).map(
+    (tag) => [tag, tags.get(tag) || 0] as [string, number],
+  )
+  return result.sort((a, b) => b[1] - a[1])
 }
 
 // Get chart total for display (filtered by selected tags if any)
@@ -928,15 +944,10 @@ onMounted(() => {
         <div class="tags-container">
           <!-- Shared Filters Section -->
           <div v-if="logs.length > 0" class="shared-filters">
-            <!-- Search -->
-            <div class="search-container">
+            <!-- Search (only for table view) -->
+            <div v-if="viewMode === 'table'" class="search-container">
               <Search :size="18" class="search-icon" />
-              <input
-                v-model="searchQuery"
-                type="text"
-                placeholder="Search tags..."
-                class="search-input"
-              />
+              <input v-model="searchQuery" type="text" placeholder="Search" class="search-input" />
               <button
                 v-if="searchQuery"
                 @click="searchQuery = ''"
@@ -1075,19 +1086,19 @@ onMounted(() => {
                   @click="chartPeriod = 'week'"
                   :class="['chart-period-button', { active: chartPeriod === 'week' }]"
                 >
-                  Week
+                  Last 8 weeks
                 </button>
                 <button
                   @click="chartPeriod = 'month'"
                   :class="['chart-period-button', { active: chartPeriod === 'month' }]"
                 >
-                  Month
+                  Last 12 months
                 </button>
                 <button
                   @click="chartPeriod = 'year'"
                   :class="['chart-period-button', { active: chartPeriod === 'year' }]"
                 >
-                  Year
+                  Last 5 years
                 </button>
               </div>
 
@@ -1097,31 +1108,30 @@ onMounted(() => {
 
               <div v-else class="chart-container">
                 <div class="timeline-chart">
-                  <div v-for="[key, tags] of chartData.entries()" :key="key" class="chart-bar">
-                    <div class="chart-label">{{ getChartLabel(key) }}</div>
+                  <div v-for="[key, tags] of chartData.entries()" :key="key" class="period-group">
+                    <!-- Individual tag columns for this period -->
                     <div
-                      class="stacked-bar"
-                      :style="{
-                        height:
-                          ((Array.from(tags.values()).reduce((a, b) => a + b, 0) || 1) /
-                            maxChartCount) *
-                            120 +
-                          'px',
-                      }"
+                      v-for="[tag, count] of getChartDataForPeriod(tags)"
+                      :key="`${key}-${tag}`"
+                      class="chart-bar"
                     >
+                      <div class="chart-total">{{ count }}</div>
                       <div
-                        v-for="[tag, count] of getChartDataForPeriod(tags)"
-                        :key="`${key}-${tag}`"
-                        class="bar-segment"
+                        class="tag-bar"
                         :style="{
+                          height: (count / maxChartCountGlobal) * 120 + 'px',
                           ...getTagColor(tag),
-                          height: (count / maxChartCount) * 120 + 'px',
                         }"
                         :title="`${tag}: ${count}`"
                       ></div>
+                      <div class="chart-label-tag">{{ tag }}</div>
                     </div>
-                    <div class="chart-total">
-                      {{ getChartTotal(tags) }}
+                    <!-- Period label below all tags -->
+                    <div class="period-label">
+                      <div class="label-line1">{{ getChartLabel(key).line1 }}</div>
+                      <div v-if="getChartLabel(key).line2" class="label-line2">
+                        {{ getChartLabel(key).line2 }}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1651,26 +1661,121 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 0;
   flex-shrink: 0;
-}
-
-.chart-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  transform: rotate(180deg);
-  margin-bottom: 4px;
+  height: 100%;
+  justify-content: flex-end;
+  min-width: 40px;
+  max-width: 60px;
 }
 
 .chart-total {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
+  min-height: 16px;
+  flex-shrink: 0;
+  order: 1;
+}
+
+.tag-bar {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  flex-shrink: 0;
+  order: 2;
+  transition: all 0.2s ease;
+  min-height: 2px;
+}
+
+.tag-bar {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--tag-hue, 220), 70%, 55%) 0%,
+    hsl(var(--tag-hue, 220), 70%, 40%) 100%
+  );
+}
+
+[data-theme='dark'] .tag-bar {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--tag-hue, 220), 65%, 50%) 0%,
+    hsl(var(--tag-hue, 220), 65%, 35%) 100%
+  );
+}
+
+.chart-label-tag {
+  font-size: 9px;
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: center;
+  max-width: 100%;
+  order: 3;
+  flex-shrink: 0;
   margin-top: 2px;
+  word-break: break-word;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.period-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  position: relative;
+}
+
+.period-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  text-align: center;
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.period-label .label-line1 {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.period-label .label-line2 {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.chart-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  text-align: center;
+  max-width: 60px;
+  order: 3;
+  flex-shrink: 0;
+}
+
+.label-line1 {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.label-line2 {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 .content-cell {
@@ -1933,34 +2038,30 @@ onMounted(() => {
 /* Timeline Chart */
 .timeline-chart {
   display: flex;
-  gap: 8px;
+  flex-direction: row;
+  gap: 24px;
   align-items: flex-end;
   overflow-x: auto;
-  padding: 8px 0;
-  min-height: 120px;
+  padding: 16px 16px 50px 16px;
+  min-height: 200px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  position: relative;
 }
 
 .chart-bar {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 0;
   flex-shrink: 0;
-}
-
-.chart-label {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  transform: rotate(180deg);
-  margin-bottom: 4px;
+  height: 100%;
+  justify-content: flex-end;
 }
 
 .stacked-bar {
-  width: 28px;
+  width: 48px;
   display: flex;
   flex-direction: column;
   border-radius: 4px;
@@ -1970,6 +2071,8 @@ onMounted(() => {
   border: 1px solid var(--border-primary);
   transition: all 0.2s ease;
   cursor: pointer;
+  margin: 4px 0;
+  order: 2;
 }
 
 .stacked-bar:hover {
@@ -1981,20 +2084,30 @@ onMounted(() => {
 }
 
 .bar-segment {
-  background: hsl(var(--tag-hue, 220), 70%, 50%);
+  background: linear-gradient(
+    180deg,
+    hsl(var(--tag-hue, 220), 70%, 55%) 0%,
+    hsl(var(--tag-hue, 220), 70%, 40%) 100%
+  );
   transition: all 0.2s ease;
   min-height: 2px;
 }
 
 [data-theme='dark'] .bar-segment {
-  background: hsl(var(--tag-hue, 220), 65%, 45%);
+  background: linear-gradient(
+    180deg,
+    hsl(var(--tag-hue, 220), 65%, 50%) 0%,
+    hsl(var(--tag-hue, 220), 65%, 35%) 100%
+  );
 }
 
 .chart-total {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  margin-top: 2px;
+  min-height: 16px;
+  flex-shrink: 0;
+  order: 1;
 }
 
 /* Mobile responsiveness */
