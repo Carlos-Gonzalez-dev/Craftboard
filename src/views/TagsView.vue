@@ -98,6 +98,13 @@ const allTags = computed(() => {
   return Array.from(tagsSet).sort()
 })
 
+// Display tags: union of saved tags and tags from logs
+const displayTags = computed(() => {
+  const tagsSet = new Set<string>(savedTags.value)
+  allTags.value.forEach((tag) => tagsSet.add(tag))
+  return Array.from(tagsSet).sort()
+})
+
 // Count documents per tag (considering time period filter)
 const tagCounts = computed(() => {
   const counts = new Map<string, number>()
@@ -214,7 +221,7 @@ const filteredLogs = computed(() => {
     if (!a.createdAt && !b.createdAt) return 0
     if (!a.createdAt) return 1
     if (!b.createdAt) return -1
-    
+
     const comparison = b.createdAt.localeCompare(a.createdAt)
     return sortOrder.value === 'desc' ? comparison : -comparison
   })
@@ -290,7 +297,8 @@ const extractMatchingTags = (markdown: string, pattern: string): string[] => {
     const tags: string[] = []
     let match
     while ((match = regex.exec(markdown)) !== null) {
-      tags.push(match[1].toLowerCase())
+      const tag = match[1] ? match[1].toLowerCase() : ''
+      if (tag) tags.push(tag)
     }
     return [...new Set(tags)]
   }
@@ -300,7 +308,8 @@ const extractMatchingTags = (markdown: string, pattern: string): string[] => {
   const regex = new RegExp(`#(${pattern}(?:\\/[\\w-]+)*)`, 'gi')
   let match
   while ((match = regex.exec(markdown)) !== null) {
-    tags.push(match[1].toLowerCase())
+    const tag = match[1] ? match[1].toLowerCase() : ''
+    if (tag) tags.push(tag)
   }
   return [...new Set(tags)]
 }
@@ -467,6 +476,61 @@ const getTagColor = (tag: string) => {
   }
 }
 
+// Split content into text and tag parts for inline rendering
+interface ContentPart {
+  type: 'text' | 'tag'
+  value: string
+}
+
+const getContentParts = (text: string): ContentPart[] => {
+  const parts: ContentPart[] = []
+  const regex = /#([\w-]+(?:\/[\w-]+)*)/gi
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(text)) !== null) {
+    const start = match.index
+    const end = start + match[0].length
+
+    // Expand to consume surrounding markdown wrappers (* or _) around the tag
+    let prefixStart = start
+    while (
+      prefixStart > lastIndex &&
+      (text.charAt(prefixStart - 1) === '*' || text.charAt(prefixStart - 1) === '_')
+    ) {
+      prefixStart--
+    }
+    let suffixEnd = end
+    while (
+      suffixEnd < text.length &&
+      (text.charAt(suffixEnd) === '*' || text.charAt(suffixEnd) === '_')
+    ) {
+      suffixEnd++
+    }
+
+    // Add preceding text (excluding markdown wrappers)
+    if (prefixStart > lastIndex) {
+      parts.push({ type: 'text', value: text.slice(lastIndex, prefixStart) })
+    }
+
+    // Add tag without #
+    const tag = match[1] ? match[1].toLowerCase() : ''
+    if (tag) {
+      parts.push({ type: 'tag', value: tag })
+    }
+
+    // Advance lastIndex past the tag and any wrappers
+    lastIndex = suffixEnd
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', value: text.slice(lastIndex) })
+  }
+
+  return parts
+}
+
 // Tabs for tags
 const tabs = computed(() => {
   return [
@@ -587,7 +651,7 @@ onMounted(() => {
               <div v-if="allTags.length > 0" class="tags-filter">
                 <div class="tags-list">
                   <button
-                    v-for="tag in allTags"
+                    v-for="tag in displayTags"
                     :key="tag"
                     @click="toggleTag(tag)"
                     :class="['tag-filter-button', { active: selectedTags.has(tag) }]"
@@ -608,12 +672,15 @@ onMounted(() => {
               <table class="logs-table">
                 <thead>
                   <tr>
-                    <th class="col-created sortable" @click="toggleSortOrder" title="Click to toggle sort order">
+                    <th
+                      class="col-created sortable"
+                      @click="toggleSortOrder"
+                      title="Click to toggle sort order"
+                    >
                       Created
                       <span class="sort-indicator">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
                     </th>
                     <th class="col-modified">Modified</th>
-                    <th class="col-tags">Tags</th>
                     <th class="col-content">Content</th>
                     <th class="col-action"></th>
                   </tr>
@@ -637,22 +704,22 @@ onMounted(() => {
                         <div class="time">{{ formatTime(entry.lastModifiedAt) }}</div>
                       </div>
                     </td>
-                    <td class="col-tags">
-                      <div class="tags-cell">
-                        <span
-                          v-for="tag in entry.tags"
-                          :key="tag"
-                          class="tag-badge"
-                          :style="getTagColor(tag)"
-                          @click.stop="filterByTag(tag)"
-                          :title="`Filter by #${tag}`"
-                        >
-                          #{{ tag }}
+                    <td class="col-content">
+                      <div class="content-cell">
+                        <span v-for="(part, i) in getContentParts(entry.markdown)" :key="i">
+                          <template v-if="part.type === 'text'">{{ part.value }}</template>
+                          <template v-else>
+                            <span
+                              class="tag-badge inline"
+                              :style="getTagColor(part.value)"
+                              @click.stop="filterByTag(part.value)"
+                              :title="`Filter by #${part.value}`"
+                            >
+                              #{{ part.value }}
+                            </span>
+                          </template>
                         </span>
                       </div>
-                    </td>
-                    <td class="col-content">
-                      <div class="content-cell">{{ entry.markdown }}</div>
                     </td>
                     <td class="col-action">
                       <ExternalLink :size="16" class="action-icon" />
@@ -943,6 +1010,15 @@ onMounted(() => {
   font-weight: 600;
 }
 
+[data-theme='dark'] .content-cell .tag-badge.inline {
+  background: hsl(var(--tag-hue, 220), 65%, 45%);
+  border-color: hsl(var(--tag-hue, 220), 65%, 45%);
+}
+
+.content-cell .tag-badge.inline {
+  margin: 0 4px;
+}
+
 [data-theme='dark'] .tag-count {
   background: rgba(255, 255, 255, 0.15);
 }
@@ -1005,7 +1081,6 @@ onMounted(() => {
   border: 1px solid var(--border-primary);
   border-radius: 8px;
   background: var(--bg-primary);
-  margin: 20px;
 }
 
 .logs-table {
@@ -1074,11 +1149,6 @@ onMounted(() => {
 .col-modified {
   width: 140px;
   min-width: 140px;
-}
-
-.col-tags {
-  width: 180px;
-  min-width: 120px;
 }
 
 .col-content {
@@ -1350,10 +1420,6 @@ onMounted(() => {
   .col-modified {
     width: 100px;
     min-width: 100px;
-  }
-
-  .col-tags {
-    display: none;
   }
 
   .col-content {
