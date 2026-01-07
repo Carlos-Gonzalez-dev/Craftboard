@@ -757,12 +757,13 @@ const chartData = computed(() => {
 })
 
 // Get max total count in chart data for proportional sizing
-// Get max count for scaling - always based on unfiltered data for consistent heights
+// Get max count for scaling - based on individual tag counts (not totals)
 const maxChartCountGlobal = computed(() => {
   let max = 0
   chartData.value.forEach((tags) => {
-    const total = Array.from(tags.values()).reduce((a, b) => a + b, 0)
-    if (total > max) max = total
+    tags.forEach((count) => {
+      if (count > max) max = count
+    })
   })
   return Math.max(max, 1)
 })
@@ -1108,29 +1109,34 @@ onMounted(() => {
 
               <div v-else class="chart-container">
                 <div class="timeline-chart">
-                  <div v-for="[key, tags] of chartData.entries()" :key="key" class="period-group">
-                    <!-- Individual tag columns for this period -->
-                    <div
-                      v-for="[tag, count] of getChartDataForPeriod(tags)"
-                      :key="`${key}-${tag}`"
-                      class="chart-bar"
-                    >
-                      <div class="chart-total">{{ count }}</div>
-                      <div
-                        class="tag-bar"
-                        :style="{
-                          height: (count / maxChartCountGlobal) * 120 + 'px',
-                          ...getTagColor(tag),
-                        }"
-                        :title="`${tag}: ${count}`"
-                      ></div>
-                      <div class="chart-label-tag">{{ tag }}</div>
-                    </div>
-                    <!-- Period label below all tags -->
+                  <div
+                    v-for="[key, tags] of Array.from(chartData.entries()).reverse()"
+                    :key="key"
+                    class="period-group"
+                  >
                     <div class="period-label">
                       <div class="label-line1">{{ getChartLabel(key).line1 }}</div>
                       <div v-if="getChartLabel(key).line2" class="label-line2">
                         {{ getChartLabel(key).line2 }}
+                      </div>
+                    </div>
+                    <!-- Individual tag rows for this period -->
+                    <div class="period-bars">
+                      <div
+                        v-for="[tag, count] of getChartDataForPeriod(tags)"
+                        :key="`${key}-${tag}`"
+                        class="chart-bar"
+                      >
+                        <div class="chart-label-tag">{{ tag }}</div>
+                        <div
+                          class="tag-bar"
+                          :style="{
+                            width: (count / maxChartCountGlobal) * 300 + 'px',
+                            ...getTagColor(tag),
+                          }"
+                          :title="`${tag}: ${count}`"
+                        ></div>
+                        <div class="chart-total">{{ count }}</div>
                       </div>
                     </div>
                   </div>
@@ -1657,86 +1663,41 @@ onMounted(() => {
   border-color: var(--btn-primary-hover);
 }
 
-.chart-bar {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  flex-shrink: 0;
-  height: 100%;
-  justify-content: flex-end;
-  min-width: 40px;
-  max-width: 60px;
-}
-
-.chart-total {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  min-height: 16px;
-  flex-shrink: 0;
-  order: 1;
-}
-
-.tag-bar {
-  width: 100%;
-  border-radius: 4px 4px 0 0;
-  flex-shrink: 0;
-  order: 2;
-  transition: all 0.2s ease;
-  min-height: 2px;
-}
-
-.tag-bar {
-  background: linear-gradient(
-    180deg,
-    hsl(var(--tag-hue, 220), 70%, 55%) 0%,
-    hsl(var(--tag-hue, 220), 70%, 40%) 100%
-  );
-}
-
-[data-theme='dark'] .tag-bar {
-  background: linear-gradient(
-    180deg,
-    hsl(var(--tag-hue, 220), 65%, 50%) 0%,
-    hsl(var(--tag-hue, 220), 65%, 35%) 100%
-  );
-}
-
-.chart-label-tag {
-  font-size: 9px;
-  color: var(--text-primary);
-  font-weight: 500;
-  text-align: center;
-  max-width: 100%;
-  order: 3;
-  flex-shrink: 0;
-  margin-top: 2px;
-  word-break: break-word;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
 .period-group {
   display: flex;
-  align-items: flex-end;
-  gap: 4px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   position: relative;
+  width: 100%;
+  padding-left: 100px;
+  padding-right: 12px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+}
+
+.period-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
 }
 
 .period-label {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: center;
   gap: 2px;
   font-size: 11px;
-  text-align: center;
+  text-align: left;
   position: absolute;
-  bottom: -30px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   width: auto;
   white-space: nowrap;
   flex-shrink: 0;
@@ -2038,11 +1999,12 @@ onMounted(() => {
 /* Timeline Chart */
 .timeline-chart {
   display: flex;
-  flex-direction: row;
-  gap: 24px;
-  align-items: flex-end;
-  overflow-x: auto;
-  padding: 16px 16px 50px 16px;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
   min-height: 200px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
@@ -2052,62 +2014,57 @@ onMounted(() => {
 
 .chart-bar {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 0;
+  gap: 8px;
   flex-shrink: 0;
-  height: 100%;
-  justify-content: flex-end;
+  width: 100%;
+  justify-content: flex-start;
 }
 
-.stacked-bar {
-  width: 48px;
-  display: flex;
-  flex-direction: column;
+.tag-bar {
+  height: 24px;
   border-radius: 4px;
   overflow: hidden;
-  gap: 1px;
-  background-color: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  transition: all 0.2s ease;
-  cursor: pointer;
-  margin: 4px 0;
-  order: 2;
-}
-
-.stacked-bar:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-[data-theme='dark'] .stacked-bar:hover {
-  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.1);
-}
-
-.bar-segment {
   background: linear-gradient(
-    180deg,
+    90deg,
     hsl(var(--tag-hue, 220), 70%, 55%) 0%,
     hsl(var(--tag-hue, 220), 70%, 40%) 100%
   );
   transition: all 0.2s ease;
-  min-height: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
-[data-theme='dark'] .bar-segment {
+[data-theme='dark'] .tag-bar {
   background: linear-gradient(
-    180deg,
+    90deg,
     hsl(var(--tag-hue, 220), 65%, 50%) 0%,
     hsl(var(--tag-hue, 220), 65%, 35%) 100%
   );
+}
+
+.chart-label-tag {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: right;
+  width: 90px;
+  flex-shrink: 0;
+  word-break: break-word;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
 }
 
 .chart-total {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  min-height: 16px;
+  min-width: 30px;
   flex-shrink: 0;
-  order: 1;
+  text-align: right;
 }
 
 /* Mobile responsiveness */
