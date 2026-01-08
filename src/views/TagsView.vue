@@ -1738,25 +1738,25 @@ onMounted(() => {
   align-items: flex-start;
   justify-content: flex-start;
   gap: 2px;
-  font-size: 11px;
+  font-size: 12px;
   text-align: left;
   position: relative;
   width: 100%;
   white-space: normal;
   flex-shrink: 0;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .period-label .label-line1 {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .period-label .label-line2 {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--text-muted);
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .chart-label {
@@ -2142,11 +2142,11 @@ onMounted(() => {
   }
 
   .period-label .label-line1 {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .period-label .label-line2 {
-    font-size: 8px;
+    font-size: 10px;
   }
 
   .chart-label-tag {
