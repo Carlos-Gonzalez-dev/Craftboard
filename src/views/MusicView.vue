@@ -175,13 +175,6 @@ const YoutubePlayer = {
     )
 
     onUnmounted(() => {
-      // Clear media session interval
-      const intervalId = (window as any)[`mediaSessionInterval_${selectedPlaylist.value?.id}`]
-      if (intervalId) {
-        clearInterval(intervalId)
-        delete (window as any)[`mediaSessionInterval_${selectedPlaylist.value?.id}`]
-      }
-      
       if (player && typeof player.destroy === 'function') {
         try {
           player.destroy()
@@ -238,13 +231,6 @@ const YoutubePlayer = {
               playerError.value = false
               // Store player instance for external access
               ;(window as any)[`ytplayer_${playerId.value}`] = player
-              
-              // Setup Media Session API for background playback
-              setupMediaSession(player)
-            },
-            onStateChange: (event: any) => {
-              // Update media session when playback state changes
-              updateMediaSessionPlaybackState(event.data)
             },
           },
         }
@@ -399,126 +385,6 @@ const YoutubePlayer = {
       return h('div')
     }
   },
-}
-
-// Media Session API functions for background audio playback
-const setupMediaSession = (ytPlayer: any) => {
-  if (!('mediaSession' in navigator)) {
-    console.log('Media Session API not supported')
-    return
-  }
-
-  try {
-    // Get video info from YouTube player
-    const getVideoData = () => {
-      try {
-        const videoData = ytPlayer.getVideoData?.()
-        return {
-          title: videoData?.title || selectedPlaylist.value?.title || 'Unknown Track',
-          artist: selectedPlaylist.value?.properties?.artist?.relations?.[0]?.title || 'Unknown Artist',
-        }
-      } catch (e) {
-        return {
-          title: selectedPlaylist.value?.title || 'Unknown Track',
-          artist: selectedPlaylist.value?.properties?.artist?.relations?.[0]?.title || 'Unknown Artist',
-        }
-      }
-    }
-
-    const updateMetadata = () => {
-      const data = getVideoData()
-      const artistImage = selectedPlaylist.value?.properties?.artist?.relations?.[0]?.properties?.image || ''
-      
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: data.title,
-        artist: data.artist,
-        album: 'Craftboard',
-        artwork: artistImage ? [
-          { src: artistImage, sizes: '512x512', type: 'image/jpeg' }
-        ] : []
-      })
-    }
-
-    // Set metadata
-    updateMetadata()
-
-    // Setup action handlers
-    navigator.mediaSession.setActionHandler('play', () => {
-      ytPlayer.playVideo?.()
-    })
-
-    navigator.mediaSession.setActionHandler('pause', () => {
-      ytPlayer.pauseVideo?.()
-    })
-
-    navigator.mediaSession.setActionHandler('previoustrack', () => {
-      // Go to previous track in playlist if available
-      ytPlayer.previousVideo?.()
-    })
-
-    navigator.mediaSession.setActionHandler('nexttrack', () => {
-      // Go to next track in playlist if available
-      ytPlayer.nextVideo?.()
-    })
-
-    navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-      const currentTime = ytPlayer.getCurrentTime?.() || 0
-      const skipTime = details.seekOffset || 10
-      ytPlayer.seekTo?.(Math.max(0, currentTime - skipTime), true)
-    })
-
-    navigator.mediaSession.setActionHandler('seekforward', (details) => {
-      const currentTime = ytPlayer.getCurrentTime?.() || 0
-      const skipTime = details.seekOffset || 10
-      ytPlayer.seekTo?.(currentTime + skipTime, true)
-    })
-
-    // Update playback position periodically
-    const updatePositionState = () => {
-      try {
-        const duration = ytPlayer.getDuration?.() || 0
-        const currentTime = ytPlayer.getCurrentTime?.() || 0
-        
-        if (duration > 0 && 'setPositionState' in navigator.mediaSession) {
-          navigator.mediaSession.setPositionState({
-            duration: duration,
-            playbackRate: ytPlayer.getPlaybackRate?.() || 1.0,
-            position: currentTime
-          })
-        }
-      } catch (e) {
-        console.debug('Error updating position state:', e)
-      }
-    }
-
-    // Update position every second
-    const positionInterval = setInterval(() => {
-      updatePositionState()
-    }, 1000)
-
-    // Store interval ID for cleanup
-    ;(window as any)[`mediaSessionInterval_${selectedPlaylist.value?.id}`] = positionInterval
-
-  } catch (error) {
-    console.error('Error setting up Media Session:', error)
-  }
-}
-
-const updateMediaSessionPlaybackState = (state: number) => {
-  if (!('mediaSession' in navigator)) return
-
-  try {
-    // YouTube player states: -1 (unstarted), 0 (ended), 1 (playing), 2 (paused), 3 (buffering), 5 (video cued)
-    if (state === 1) {
-      navigator.mediaSession.playbackState = 'playing'
-    } else if (state === 2) {
-      navigator.mediaSession.playbackState = 'paused'
-    } else if (state === 0) {
-      navigator.mediaSession.playbackState = 'none'
-    }
-  } catch (error) {
-    console.debug('Error updating media session playback state:', error)
-  }
 }
 
 // Methods
@@ -906,26 +772,6 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', onResize)
   window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('mouseup', stopResize)
-  
-  // Clean up media session interval on unmount
-  if (selectedPlaylist.value?.id) {
-    const intervalId = (window as any)[`mediaSessionInterval_${selectedPlaylist.value.id}`]
-    if (intervalId) {
-      clearInterval(intervalId)
-      delete (window as any)[`mediaSessionInterval_${selectedPlaylist.value.id}`]
-    }
-  }
-})
-
-// Watch for playlist changes to clean up previous media session intervals
-watch(() => selectedPlaylist.value?.id, (newId, oldId) => {
-  if (oldId) {
-    const intervalId = (window as any)[`mediaSessionInterval_${oldId}`]
-    if (intervalId) {
-      clearInterval(intervalId)
-      delete (window as any)[`mediaSessionInterval_${oldId}`]
-    }
-  }
 })
 
 // Computed
