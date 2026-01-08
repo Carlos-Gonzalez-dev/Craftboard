@@ -137,7 +137,10 @@ const handleRefresh = () => {
 }
 
 const reloadApp = () => {
-  window.location.reload()
+  const url = new URL(window.location.href)
+  url.searchParams.set('t', Date.now().toString())
+  // Replace to avoid stacking history entries while forcing cache revalidation
+  window.location.replace(url.toString())
 }
 
 const dashboardTitle = ref('Craftboard')
@@ -295,7 +298,7 @@ const showUpdateNotification = () => {
 }
 
 const updateApp = () => {
-  window.location.reload()
+  reloadApp()
 }
 
 const handleStorageChange = (e: StorageEvent) => {
