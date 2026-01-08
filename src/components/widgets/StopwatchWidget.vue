@@ -18,6 +18,7 @@ const elapsed = ref(0) // in milliseconds
 const isRunning = ref(false)
 let interval: number | undefined
 let startTimestamp = 0
+let wakeLock: any = null // Wake Lock API reference
 
 const widgetDisplayName = computed(() => props.widget.title || props.widget.name || 'Stopwatch')
 
@@ -33,11 +34,63 @@ const formatTime = (ms: number) => {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
 }
 
+// Update app badge with elapsed time
+const updateAppBadge = async (ms: number) => {
+  if ('setAppBadge' in navigator) {
+    try {
+      const minutes = Math.floor(ms / 60000)
+      if (minutes > 0) {
+        await (navigator as any).setAppBadge(minutes)
+      }
+    } catch (e) {
+      console.debug('Could not update app badge:', e)
+    }
+  }
+}
+
+// Clear app badge
+const clearAppBadge = async () => {
+  if ('clearAppBadge' in navigator) {
+    try {
+      await (navigator as any).clearAppBadge()
+    } catch (e) {
+      console.debug('Could not clear app badge:', e)
+    }
+  }
+}
+
+// Request wake lock to keep screen on
+const requestWakeLock = async () => {
+  if ('wakeLock' in navigator) {
+    try {
+      wakeLock = await (navigator as any).wakeLock.request('screen')
+      console.log('Wake Lock acquired (Stopwatch)')
+    } catch (e) {
+      console.debug('Could not acquire wake lock:', e)
+    }
+  }
+}
+
+// Release wake lock
+const releaseWakeLock = async () => {
+  if (wakeLock !== null) {
+    try {
+      await wakeLock.release()
+      wakeLock = null
+    } catch (e) {
+      console.debug('Could not release wake lock:', e)
+    }
+  }
+}
+
 const start = () => {
   isRunning.value = true
   startTimestamp = Date.now()
   const startTime = Date.now() - elapsed.value
-  
+
+  // Request wake lock
+  requestWakeLock()
+
   // Register in active timers bar
   const elapsedSeconds = Math.floor(elapsed.value / 1000)
   registerTimer({
@@ -56,17 +109,22 @@ const start = () => {
     color: props.widget.color,
     icon: 'stopwatch',
   })
-  
+
   interval = window.setInterval(() => {
     elapsed.value = Date.now() - startTime
-    
+
     // Sync with global timer
     const globalTimer = getTimer(props.widget.id)
     if (globalTimer) {
       elapsed.value = globalTimer.timeRemaining * 1000
     }
+
+    // Update app badge every minute
+    if (Math.floor(elapsed.value / 1000) % 60 === 0) {
+      updateAppBadge(elapsed.value)
+    }
   }, 10) // Update every 10ms for smooth display
-  
+
   saveState()
 }
 
@@ -76,15 +134,19 @@ const pause = () => {
     clearInterval(interval)
     interval = undefined
   }
-  
+
+  // Release wake lock and clear badge
+  releaseWakeLock()
+  clearAppBadge()
+
   // Update timer state but keep it in the bar
   const elapsedSeconds = Math.floor(elapsed.value / 1000)
   updateTimer(props.widget.id, {
     isRunning: false,
     timeRemaining: elapsedSeconds,
-    elapsedAtStart: elapsedSeconds
+    elapsedAtStart: elapsedSeconds,
   })
-  
+
   saveState()
 }
 
@@ -95,10 +157,14 @@ const reset = () => {
     clearInterval(interval)
     interval = undefined
   }
-  
+
+  // Release wake lock and clear badge
+  releaseWakeLock()
+  clearAppBadge()
+
   // Remove from active timers bar
   unregisterTimer(props.widget.id)
-  
+
   saveState()
 }
 
@@ -114,7 +180,7 @@ const saveState = () => {
   const state = {
     elapsed: elapsed.value,
     isRunning: isRunning.value,
-    timestamp: Date.now() // Save current timestamp instead of startTimestamp
+    timestamp: Date.now(), // Save current timestamp instead of startTimestamp
   }
   localStorage.setItem(`stopwatch-${props.widget.id}`, JSON.stringify(state))
 }
@@ -124,7 +190,7 @@ const loadState = () => {
   if (saved) {
     try {
       const state = JSON.parse(saved)
-      
+
       if (state.isRunning && state.timestamp) {
         // Calculate elapsed time including time since last save
         const timeSinceLastSave = Date.now() - state.timestamp
@@ -142,7 +208,7 @@ const loadState = () => {
 
 onMounted(() => {
   loadState()
-  
+
   // If was running, restart with current elapsed time
   if (isRunning.value) {
     start()
@@ -153,6 +219,9 @@ onUnmounted(() => {
   if (interval) {
     clearInterval(interval)
   }
+  // Release wake lock and clear badge
+  releaseWakeLock()
+  clearAppBadge()
   // Keep timer in bar when switching views
 })
 </script>
@@ -167,7 +236,12 @@ onUnmounted(() => {
       <button v-else @click="toggle" class="control-button pause-button" title="Pause">
         <Pause :size="18" />
       </button>
-      <button @click="reset" class="control-button reset-button" title="Reset" :disabled="elapsed === 0">
+      <button
+        @click="reset"
+        class="control-button reset-button"
+        title="Reset"
+        :disabled="elapsed === 0"
+      >
         <RotateCcw :size="18" />
       </button>
     </div>
@@ -251,4 +325,3 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 </style>
-

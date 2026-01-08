@@ -1,10 +1,20 @@
 <script setup lang="ts">
 defineOptions({
-  name: 'MusicView'
+  name: 'MusicView',
 })
 
 import { ref, computed, onMounted, onUnmounted, watch, h, onActivated, inject } from 'vue'
-import { RefreshCw, Music as MusicIcon, ExternalLink, GripVertical, X, ChevronDown, ChevronUp, Maximize, Minimize } from 'lucide-vue-next'
+import {
+  RefreshCw,
+  Music as MusicIcon,
+  ExternalLink,
+  GripVertical,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Maximize,
+  Minimize,
+} from 'lucide-vue-next'
 import {
   getApiUrl,
   getApiToken,
@@ -181,7 +191,7 @@ const YoutubePlayer = {
         clearInterval(intervalId)
         delete (window as any)[`mediaSessionInterval_${selectedPlaylist.value?.id}`]
       }
-      
+
       if (player && typeof player.destroy === 'function') {
         try {
           player.destroy()
@@ -238,7 +248,7 @@ const YoutubePlayer = {
               playerError.value = false
               // Store player instance for external access
               ;(window as any)[`ytplayer_${playerId.value}`] = player
-              
+
               // Setup Media Session API for background playback
               setupMediaSession(player)
             },
@@ -415,27 +425,28 @@ const setupMediaSession = (ytPlayer: any) => {
         const videoData = ytPlayer.getVideoData?.()
         return {
           title: videoData?.title || selectedPlaylist.value?.title || 'Unknown Track',
-          artist: selectedPlaylist.value?.properties?.artist?.relations?.[0]?.title || 'Unknown Artist',
+          artist:
+            selectedPlaylist.value?.properties?.artist?.relations?.[0]?.title || 'Unknown Artist',
         }
       } catch (e) {
         return {
           title: selectedPlaylist.value?.title || 'Unknown Track',
-          artist: selectedPlaylist.value?.properties?.artist?.relations?.[0]?.title || 'Unknown Artist',
+          artist:
+            selectedPlaylist.value?.properties?.artist?.relations?.[0]?.title || 'Unknown Artist',
         }
       }
     }
 
     const updateMetadata = () => {
       const data = getVideoData()
-      const artistImage = selectedPlaylist.value?.properties?.artist?.relations?.[0]?.properties?.image || ''
-      
+      const artistImage =
+        selectedPlaylist.value?.properties?.artist?.relations?.[0]?.properties?.image || ''
+
       navigator.mediaSession.metadata = new MediaMetadata({
         title: data.title,
         artist: data.artist,
         album: 'Craftboard',
-        artwork: artistImage ? [
-          { src: artistImage, sizes: '512x512', type: 'image/jpeg' }
-        ] : []
+        artwork: artistImage ? [{ src: artistImage, sizes: '512x512', type: 'image/jpeg' }] : [],
       })
     }
 
@@ -478,12 +489,12 @@ const setupMediaSession = (ytPlayer: any) => {
       try {
         const duration = ytPlayer.getDuration?.() || 0
         const currentTime = ytPlayer.getCurrentTime?.() || 0
-        
+
         if (duration > 0 && 'setPositionState' in navigator.mediaSession) {
           navigator.mediaSession.setPositionState({
             duration: duration,
             playbackRate: ytPlayer.getPlaybackRate?.() || 1.0,
-            position: currentTime
+            position: currentTime,
           })
         }
       } catch (e) {
@@ -498,7 +509,6 @@ const setupMediaSession = (ytPlayer: any) => {
 
     // Store interval ID for cleanup
     ;(window as any)[`mediaSessionInterval_${selectedPlaylist.value?.id}`] = positionInterval
-
   } catch (error) {
     console.error('Error setting up Media Session:', error)
   }
@@ -783,7 +793,7 @@ const positionBeforeCollapse = ref({ x: 0, y: 0 })
 const stateBeforeFullscreen = ref({
   position: { x: 0, y: 0 },
   size: { width: 350, height: 250 },
-  moved: false
+  moved: false,
 })
 const playerSize = ref({ width: 350, height: 250 })
 const isDragging = ref(false)
@@ -810,7 +820,7 @@ watch(
       }
     }
   },
-  { deep: true }
+  { deep: true },
 )
 
 const toggleCollapse = () => {
@@ -830,7 +840,7 @@ const toggleFullscreen = () => {
     stateBeforeFullscreen.value = {
       position: { ...playerPosition.value },
       size: { ...playerSize.value },
-      moved: userHasMoved.value
+      moved: userHasMoved.value,
     }
     // Set fullscreen dimensions
     playerPosition.value = { x: 0, y: 0 }
@@ -850,7 +860,7 @@ const startDrag = (e: MouseEvent) => {
   isDragging.value = true
   dragStart.value = {
     x: e.clientX - playerPosition.value.x,
-    y: e.clientY - playerPosition.value.y
+    y: e.clientY - playerPosition.value.y,
   }
   userHasMoved.value = true
 }
@@ -859,7 +869,7 @@ const onDrag = (e: MouseEvent) => {
   if (!isDragging.value) return
   playerPosition.value = {
     x: e.clientX - dragStart.value.x,
-    y: e.clientY - dragStart.value.y
+    y: e.clientY - dragStart.value.y,
   }
 }
 
@@ -872,7 +882,7 @@ const startResize = (e: MouseEvent) => {
   isResizing.value = true
   dragStart.value = {
     x: e.clientX,
-    y: e.clientY
+    y: e.clientY,
   }
 }
 
@@ -882,7 +892,7 @@ const onResize = (e: MouseEvent) => {
   const deltaY = e.clientY - dragStart.value.y
   playerSize.value = {
     width: Math.max(300, playerSize.value.width + deltaX),
-    height: Math.max(200, playerSize.value.height + deltaY)
+    height: Math.max(200, playerSize.value.height + deltaY),
   }
   dragStart.value = { x: e.clientX, y: e.clientY }
 }
@@ -890,8 +900,6 @@ const onResize = (e: MouseEvent) => {
 const stopResize = () => {
   isResizing.value = false
 }
-
-
 
 // Add global mouse event listeners
 onMounted(() => {
@@ -906,7 +914,7 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', onResize)
   window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('mouseup', stopResize)
-  
+
   // Clean up media session interval on unmount
   if (selectedPlaylist.value?.id) {
     const intervalId = (window as any)[`mediaSessionInterval_${selectedPlaylist.value.id}`]
@@ -918,15 +926,18 @@ onUnmounted(() => {
 })
 
 // Watch for playlist changes to clean up previous media session intervals
-watch(() => selectedPlaylist.value?.id, (newId, oldId) => {
-  if (oldId) {
-    const intervalId = (window as any)[`mediaSessionInterval_${oldId}`]
-    if (intervalId) {
-      clearInterval(intervalId)
-      delete (window as any)[`mediaSessionInterval_${oldId}`]
+watch(
+  () => selectedPlaylist.value?.id,
+  (newId, oldId) => {
+    if (oldId) {
+      const intervalId = (window as any)[`mediaSessionInterval_${oldId}`]
+      if (intervalId) {
+        clearInterval(intervalId)
+        delete (window as any)[`mediaSessionInterval_${oldId}`]
+      }
     }
-  }
-})
+  },
+)
 
 // Computed
 const genres = computed(() => {
@@ -1269,20 +1280,22 @@ watch(
         <!-- Player -->
         <div class="player-section">
           <Teleport to="#global-music-player">
-            <div 
-              v-if="selectedPlaylist" 
+            <div
+              v-if="selectedPlaylist"
               class="global-player-wrapper"
-              :class="{ 
+              :class="{
                 'is-collapsed': isCollapsed,
                 'is-dragging': isDragging,
                 'is-resizing': isResizing,
                 'is-fullscreen': isFullscreen,
-                'user-positioned': userHasMoved
+                'user-positioned': userHasMoved,
               }"
               :style="{
-                transform: userHasMoved ? `translate(${playerPosition.x}px, ${playerPosition.y}px)` : undefined,
+                transform: userHasMoved
+                  ? `translate(${playerPosition.x}px, ${playerPosition.y}px)`
+                  : undefined,
                 width: !isCollapsed ? `${playerSize.width}px` : undefined,
-                height: !isCollapsed ? `${playerSize.height}px` : undefined
+                height: !isCollapsed ? `${playerSize.height}px` : undefined,
               }"
             >
               <div class="floating-player-header">
@@ -1290,49 +1303,52 @@ watch(
                   <GripVertical :size="14" />
                 </div>
                 <div class="floating-player-info">
-                  <img 
-                    v-if="currentArtistImage" 
-                    :src="currentArtistImage" 
+                  <img
+                    v-if="currentArtistImage"
+                    :src="currentArtistImage"
                     :alt="selectedPlaylist.properties?.artist?.relations?.[0]?.title"
                     class="floating-artist-image"
                   />
                   <MusicIcon v-else :size="16" class="floating-icon" />
                   <div class="floating-text">
                     <div class="floating-title">{{ selectedPlaylist.title }}</div>
-                    <div class="floating-artist" v-if="selectedPlaylist.properties?.artist?.relations?.[0]?.title">
+                    <div
+                      class="floating-artist"
+                      v-if="selectedPlaylist.properties?.artist?.relations?.[0]?.title"
+                    >
                       {{ selectedPlaylist.properties.artist.relations[0].title }}
                     </div>
                   </div>
                 </div>
                 <div class="header-buttons">
-                  <button 
-                    @click.stop="toggleFullscreen" 
+                  <button
+                    @click.stop="toggleFullscreen"
                     class="header-button"
                     :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'"
                   >
                     <Minimize v-if="isFullscreen" :size="14" />
                     <Maximize v-else :size="14" />
                   </button>
-                  <button 
+                  <button
                     v-if="!isFullscreen"
-                    @click.stop="toggleCollapse" 
+                    @click.stop="toggleCollapse"
                     class="header-button"
                     :title="isCollapsed ? 'Expand player' : 'Collapse player'"
                   >
                     <ChevronUp v-if="isCollapsed" :size="14" />
                     <ChevronDown v-else :size="14" />
                   </button>
-                  <button 
+                  <button
                     v-if="!isFullscreen"
-                    @click.stop="navigateToMusic" 
+                    @click.stop="navigateToMusic"
                     class="header-button"
                     title="Go to Music view"
                   >
                     <ExternalLink :size="14" />
                   </button>
-                  <button 
+                  <button
                     v-if="!isFullscreen"
-                    @click.stop="selectedPlaylist = null" 
+                    @click.stop="selectedPlaylist = null"
                     class="header-button"
                     title="Close player"
                   >
@@ -1347,16 +1363,16 @@ watch(
                   :key="selectedPlaylist.id"
                 />
               </div>
-              <div 
-                v-if="!isCollapsed" 
-                class="resize-handle"
-                @mousedown="startResize"
-              ></div>
+              <div v-if="!isCollapsed" class="resize-handle" @mousedown="startResize"></div>
             </div>
           </Teleport>
 
           <div class="player-content">
-            <div v-if="selectedPlaylist" class="player-display-wrapper" id="music-view-player-target">
+            <div
+              v-if="selectedPlaylist"
+              class="player-display-wrapper"
+              id="music-view-player-target"
+            >
               <!-- Player is rendered here via teleport from global container -->
             </div>
             <div v-else class="player-empty">
@@ -2089,7 +2105,8 @@ watch(
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
