@@ -484,6 +484,31 @@ const getTagColor = (tag: string) => {
   }
 }
 
+// Style helper for bars: keep proportions but ensure visibility for tiny/zero counts
+const getBarStyle = (tag: string, count: number) => {
+  const max = maxChartCountGlobal.value || 1
+
+  // Zero values: show a small placeholder bar so text is visible
+  if (count === 0) {
+    return {
+      width: '52px',
+      minWidth: '52px',
+      opacity: 0.6,
+      ...getTagColor(tag),
+    }
+  }
+
+  const percent = (count / max) * 100
+  const clamped = Math.max(percent, 10) // Ensure a readable minimum width
+
+  return {
+    width: `${clamped}%`,
+    minWidth: '64px',
+    maxWidth: '100%',
+    ...getTagColor(tag),
+  }
+}
+
 // Split content into text and tag parts for inline rendering
 interface ContentPart {
   type: 'text' | 'tag'
@@ -803,10 +828,10 @@ const chartData = computed(() => {
 // This will scale based on the currently visible (filtered) data
 const maxChartCountGlobal = computed(() => {
   let max = 0
-  
+
   // Use filtered data if tags are selected, otherwise use all data
   const dataToUse = selectedTags.value.size > 0 ? filteredChartData.value : chartData.value
-  
+
   dataToUse.forEach((tags) => {
     tags.forEach((count) => {
       if (count > max) max = count
@@ -1174,18 +1199,19 @@ onMounted(() => {
                         :key="`${key}-${tag}`"
                         class="chart-bar"
                       >
-                        <div class="chart-label-tag">{{ tag }}</div>
                         <div class="tag-bar-container">
                           <div
                             class="tag-bar"
-                            :style="{
-                              width: (count / maxChartCountGlobal) * 100 + '%',
-                              ...getTagColor(tag),
-                            }"
+                            :class="{ 'is-empty': count === 0 }"
+                            :style="getBarStyle(tag, count)"
                             :title="`${tag}: ${count}`"
-                          ></div>
+                          >
+                            <span class="tag-bar-text">
+                              {{ tag }}
+                              <span class="tag-bar-count">• {{ count }}</span>
+                            </span>
+                          </div>
                         </div>
-                        <div class="chart-total">{{ count }}</div>
                       </div>
                     </div>
                   </div>
@@ -2058,19 +2084,18 @@ onMounted(() => {
 
 .chart-bar {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   flex-shrink: 0;
   width: 100%;
-  justify-content: flex-start;
   min-width: 0; /* Permite que los elementos flex se encojan */
 }
 
 .tag-bar {
   height: 24px;
   border-radius: 4px;
-  overflow: hidden;
+  overflow: visible;
   background: linear-gradient(
     90deg,
     hsl(var(--tag-hue, 220), 70%, 55%) 0%,
@@ -2081,6 +2106,42 @@ onMounted(() => {
   flex-shrink: 0;
   min-width: 4px; /* Mínimo visible para valores pequeños */
   max-width: 100%; /* No exceder el contenedor */
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 8px;
+}
+
+.tag-bar-text {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
+  width: auto;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.tag-bar-count {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+  margin-left: 0;
+}
+
+.tag-bar.is-empty {
+  background: linear-gradient(90deg, var(--bg-tertiary) 0%, var(--bg-tertiary) 100%);
+  color: var(--text-muted);
+}
+
+.tag-bar.is-empty .tag-bar-text {
+  color: var(--text-primary);
+  text-shadow: none;
 }
 
 [data-theme='dark'] .tag-bar {
@@ -2091,18 +2152,22 @@ onMounted(() => {
   );
 }
 
+[data-theme='dark'] .tag-bar.is-empty {
+  background: var(--bg-tertiary);
+  box-shadow: none;
+}
+
 .chart-label-tag {
   font-size: 12px;
   color: var(--text-primary);
-  font-weight: 500;
-  text-align: right;
-  width: 90px;
-  flex-shrink: 0;
+  font-weight: 600;
+  text-align: left;
+  flex: 1;
+  min-width: 0;
   word-break: break-word;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-bar-container {
@@ -2149,13 +2214,16 @@ onMounted(() => {
     font-size: 10px;
   }
 
-  .chart-label-tag {
-    width: 60px;
+  .tag-bar {
+    height: 20px;
+  }
+
+  .tag-bar-text {
     font-size: 11px;
   }
 
-  .tag-bar {
-    height: 20px;
+  .tag-bar-count {
+    font-size: 11px;
   }
 
   .chart-total {
