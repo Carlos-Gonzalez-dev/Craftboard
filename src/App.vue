@@ -256,6 +256,7 @@ const loadNavTabSettings = () => {
   showBookmarksTab.value = localStorage.getItem('show-bookmarks-tab') !== 'false'
   showRSSTab.value = localStorage.getItem('show-rss-tab') !== 'false'
   showTasksTab.value = localStorage.getItem('show-tasks-tab') !== 'false'
+  showTagsTab.value = localStorage.getItem('show-tags-tab') !== 'false'
 }
 
 // Update detection
@@ -312,6 +313,8 @@ const handleStorageChange = (e: StorageEvent) => {
     showRSSTab.value = e.newValue !== 'false'
   } else if (e.key === 'show-tasks-tab') {
     showTasksTab.value = e.newValue !== 'false'
+  } else if (e.key === 'show-tags-tab') {
+    showTagsTab.value = e.newValue !== 'false'
   }
 }
 
