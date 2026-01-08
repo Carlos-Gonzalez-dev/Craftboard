@@ -1401,8 +1401,8 @@ watch(
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 0;
   overflow: hidden;
+  min-height: 100%;
 }
 
 @media (min-width: 768px) {
@@ -1419,7 +1419,7 @@ watch(
   display: flex;
   flex-direction: column;
   flex: 2;
-  min-height: 0;
+  min-height: 100%;
 }
 
 @media (min-width: 768px) {
