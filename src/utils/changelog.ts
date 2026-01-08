@@ -7,7 +7,7 @@ export const changelog: ChangelogEntry[] = [
   {
     date: '2026-01-08',
     changes: [
-      'Fixed Tag visibility setting, now it hides the tag correctly',
+      'Fixed Tag visibility setting, now it hides the Tag tab correctly',
       'Added media session API support for MusicView, it should keep playing music when the app is in the background',
       'Added live activity support for Pomodoro and Stopwatch timers',
       'Improve Tag charts',
