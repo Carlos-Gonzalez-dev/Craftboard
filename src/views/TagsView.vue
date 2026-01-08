@@ -656,7 +656,7 @@ const chartLogsForPeriods = computed(() => {
 // Get tag occurrences grouped by week
 const tagOccurrencesByWeek = computed(() => {
   const weekData = new Map<string, Map<string, number>>()
-  
+
   if (logs.value.length === 0) return weekData
 
   // Find min and max dates from logs
@@ -800,9 +800,14 @@ const chartData = computed(() => {
 
 // Get max total count in chart data for proportional sizing
 // Get max count for scaling - based on individual tag counts (not totals)
+// This will scale based on the currently visible (filtered) data
 const maxChartCountGlobal = computed(() => {
   let max = 0
-  chartData.value.forEach((tags) => {
+  
+  // Use filtered data if tags are selected, otherwise use all data
+  const dataToUse = selectedTags.value.size > 0 ? filteredChartData.value : chartData.value
+  
+  dataToUse.forEach((tags) => {
     tags.forEach((count) => {
       if (count > max) max = count
     })
@@ -1170,14 +1175,16 @@ onMounted(() => {
                         class="chart-bar"
                       >
                         <div class="chart-label-tag">{{ tag }}</div>
-                        <div
-                          class="tag-bar"
-                          :style="{
-                            width: (count / maxChartCountGlobal) * 300 + 'px',
-                            ...getTagColor(tag),
-                          }"
-                          :title="`${tag}: ${count}`"
-                        ></div>
+                        <div class="tag-bar-container">
+                          <div
+                            class="tag-bar"
+                            :style="{
+                              width: (count / maxChartCountGlobal) * 100 + '%',
+                              ...getTagColor(tag),
+                            }"
+                            :title="`${tag}: ${count}`"
+                          ></div>
+                        </div>
                         <div class="chart-total">{{ count }}</div>
                       </div>
                     </div>
@@ -2057,6 +2064,7 @@ onMounted(() => {
   flex-shrink: 0;
   width: 100%;
   justify-content: flex-start;
+  min-width: 0; /* Permite que los elementos flex se encojan */
 }
 
 .tag-bar {
@@ -2071,6 +2079,8 @@ onMounted(() => {
   transition: all 0.2s ease;
   cursor: pointer;
   flex-shrink: 0;
+  min-width: 4px; /* Mínimo visible para valores pequeños */
+  max-width: 100%; /* No exceder el contenedor */
 }
 
 [data-theme='dark'] .tag-bar {
@@ -2093,6 +2103,13 @@ onMounted(() => {
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
+}
+
+.tag-bar-container {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .chart-total {
