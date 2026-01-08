@@ -6,7 +6,10 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: '2026-01-08',
-    changes: ['Fixed Tag visibility setting, now it hides the tag correctly'],
+    changes: [
+      'Fixed Tag visibility setting, now it hides the tag correctly',
+      'Add media session API support for MusicView, it should keep playing music when the app is in the background',
+    ],
   },
   {
     date: '2026-01-07v2',
