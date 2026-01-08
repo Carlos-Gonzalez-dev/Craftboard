@@ -220,7 +220,7 @@ const filteredLogs = computed(() => {
   if (selectedTags.value.size > 0) {
     items = items.filter((item) => {
       if (!item.tags || item.tags.length === 0) return false
-      return Array.from(selectedTags.value).every((tag) => item.tags.includes(tag))
+      return Array.from(selectedTags.value).some((tag) => item.tags.includes(tag))
     })
   }
 
