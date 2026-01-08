@@ -5,6 +5,12 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: '2026-01-08v2',
+    changes: [
+      'Reverted live activity and media session API support. Not working as expected, might come back in the future',
+    ],
+  },
+  {
     date: '2026-01-08',
     changes: [
       'Fixed Tag visibility setting, now it hides the Tag tab correctly',
@@ -12,10 +18,7 @@ export const changelog: ChangelogEntry[] = [
       'Added live activity support for Pomodoro and Stopwatch timers',
       'Improve Tag charts',
       'Refactor some code for clarity',
-      'Fixed Tag visibility setting, now it hides the tag correctly',
-      'Add media session API support for MusicView, it should keep playing music when the app is in the background',
     ],
-    changes: ['Fixed Tag visibility setting, now it hides the tag correctly'],
   },
   {
     date: '2026-01-07v2',
