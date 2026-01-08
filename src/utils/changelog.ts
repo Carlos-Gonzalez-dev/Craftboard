@@ -11,6 +11,7 @@ export const changelog: ChangelogEntry[] = [
       'Added media session API support for MusicView, it should keep playing music when the app is in the background',
       'Added live activity support for Pomodoro and Stopwatch timers',
       'Improve Tag charts',
+      'Refactor some code for clarity',
     ],
   },
   {

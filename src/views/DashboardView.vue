@@ -277,7 +277,7 @@ onMounted(() => {
   isUpdating.value = true
   // Load panes from localStorage
   loadPanes()
-  
+
   // If still no panes exist, create default with default widgets
   if (panes.value.length === 0) {
     panes.value = [
@@ -290,7 +290,7 @@ onMounted(() => {
     activePaneId.value = 'default'
     savePanes()
   }
-  
+
   setTimeout(() => {
     isUpdating.value = false
   }, 100)
@@ -485,6 +485,30 @@ const defaultColors = [
   'linear-gradient(135deg, #22d3ee 0%, #0891b2 100%)', // Cyan
 ]
 
+// Widget configuration dictionary
+const widgetConfigMap: Record<string, { width: number; height: number; title: string }> = {
+  markdown: { width: 5, height: 3, title: 'Scratchpad' },
+  clock: { width: 6, height: 3, title: 'Clock' },
+  stopwatch: { width: 5, height: 3, title: 'Stopwatch' },
+  collection: { width: 14, height: 4, title: 'Collection' },
+  'daily-note': { width: 8, height: 4, title: 'Daily Note' },
+  'pin-block': { width: 5, height: 3, title: 'Block' },
+  'pin-url': { width: 5, height: 3, title: 'Pin URL' },
+  iframe: { width: 8, height: 4, title: 'iFrame' },
+  stats: { width: 10, height: 8, title: 'Workspace Stats' },
+  'task-stats': { width: 10, height: 8, title: 'Task Stats' },
+  'collection-chart': { width: 10, height: 8, title: 'Collection Stats' },
+  graph: { width: 6, height: 3, title: 'Graph' },
+  bookmark: { width: 5, height: 3, title: 'Bookmark' },
+  quote: { width: 5, height: 3, title: 'Quote' },
+  rss: { width: 6, height: 5, title: 'RSS Feed' },
+  pomodoro: { width: 6, height: 4, title: 'Pomodoro Timer' },
+  'document-tasks': { width: 8, height: 3, title: 'Document' },
+  notes: { width: 6, height: 3, title: 'Checklist' },
+}
+
+const defaultWidgetConfig = { width: 4, height: 2, title: 'Widget' }
+
 const addWidget = (
   type:
     | 'markdown'
@@ -510,82 +534,8 @@ const addWidget = (
   if (!activePane) return
 
   const colorIndex = activePane.widgets.length % defaultColors.length
-  const widgetWidth =
-    type === 'clock'
-      ? 6
-      : type === 'stopwatch'
-        ? 5
-        : type === 'pomodoro'
-          ? 6
-          : type === 'collection'
-            ? 14
-            : type === 'daily-note'
-              ? 8
-              : type === 'document-tasks'
-                ? 8
-              : type === 'pin-block'
-                ? 5
-              : type === 'pin-url'
-                ? 5
-              : type === 'iframe'
-                ? 8
-              : type === 'stats'
-                ? 10
-              : type === 'task-stats'
-                ? 10
-              : type === 'collection-chart'
-                ? 10
-              : type === 'graph'
-                ? 6
-              : type === 'bookmark'
-                ? 5
-              : type === 'quote'
-                ? 5
-              : type === 'rss'
-                ? 6
-              : type === 'markdown'
-                ? 5
-              : type === 'notes'
-                ? 6
-              : 4
-  const widgetHeight =
-    type === 'clock'
-      ? 3
-      : type === 'stopwatch'
-        ? 3
-        : type === 'pomodoro'
-          ? 4
-          : type === 'collection'
-            ? 4
-            : type === 'daily-note'
-              ? 4
-              : type === 'document-tasks'
-                ? 3
-              : type === 'pin-block'
-                ? 3
-              : type === 'pin-url'
-                ? 3
-              : type === 'iframe'
-                ? 4
-              : type === 'stats'
-                ? 8
-              : type === 'task-stats'
-                ? 8
-              : type === 'collection-chart'
-                ? 8
-              : type === 'graph'
-                ? 3
-              : type === 'bookmark'
-                ? 3
-              : type === 'quote'
-                ? 3
-              : type === 'rss'
-                ? 5
-              : type === 'markdown'
-                ? 3
-              : type === 'notes'
-                ? 3
-              : 2
+  const config = widgetConfigMap[type] || defaultWidgetConfig
+  const { width: widgetWidth, height: widgetHeight, title: widgetTitle } = config
 
   // Find next available position
   const xPosition = 0
@@ -604,49 +554,13 @@ const addWidget = (
     y: yPosition,
     w: widgetWidth,
     h: widgetHeight,
-    title:
-      type === 'markdown'
-        ? 'Scratchpad'
-        : type === 'clock'
-          ? 'Clock'
-          : type === 'stopwatch'
-            ? 'Stopwatch'
-            : type === 'collection'
-              ? 'Collection'
-              : type === 'daily-note'
-                ? 'Daily Note'
-                : type === 'pin-block'
-                    ? 'Block'
-                    : type === 'pin-url'
-                      ? 'Pin URL'
-                      : type === 'iframe'
-                        ? 'iFrame'
-                        : type === 'stats'
-                        ? 'Workspace Stats'
-                        : type === 'task-stats'
-                          ? 'Task Stats'
-                          : type === 'collection-chart'
-                            ? 'Collection Stats'
-                            : type === 'graph'
-                            ? 'Graph'
-                          : type === 'bookmark'
-                            ? 'Bookmark'
-                            : type === 'quote'
-                              ? 'Quote'
-                              : type === 'rss'
-                                ? 'RSS Feed'
-                                : type === 'pomodoro'
-                                  ? 'Pomodoro Timer'
-                                  : type === 'document-tasks'
-                                    ? 'Document'
-                                    : 'Checklist',
+    title: widgetTitle,
     color: defaultColors[colorIndex],
   }
   activePane.widgets.push(newWidget)
   savePanes()
   showAddModal.value = false
 }
-
 </script>
 
 <template>
@@ -727,8 +641,6 @@ const addWidget = (
         </div>
       </div>
     </div>
-
-
   </div>
 </template>
 
@@ -1485,26 +1397,26 @@ const addWidget = (
     padding: 6px 12px;
     gap: 4px;
   }
-  
+
   .add-widget-button {
     flex: 1;
     justify-content: center;
   }
-  
+
   .view-mode-buttons {
     flex: 1;
   }
-  
+
   .view-mode-button {
     flex: 1;
   }
-  
+
   .dashboard-view {
     height: calc(100vh - var(--navbar-height, 100px) - var(--footer-height, 60px));
     min-height: 0;
     overflow: hidden;
   }
-  
+
   .grid-container {
     height: 100%;
     overflow-y: auto;
