@@ -29,8 +29,6 @@ const intervalId = ref<number | null>(null)
 const startTimestamp = ref<number | null>(null) // Timestamp when timer started
 const pausedTimeRemaining = ref<number | null>(null) // Time remaining when paused
 const timeRemainingAtStart = ref<number | null>(null) // Time remaining when timer was started (for timestamp calculation)
-const persistentNotificationId = ref<string | null>(null) // For iOS persistent notification
-let wakeLock: any = null // Wake Lock API reference
 
 // Timer durations (in seconds)
 const WORK_DURATION = 25 * 60 // 25 minutes
@@ -157,12 +155,6 @@ const startTimer = () => {
   timeRemainingAtStart.value = timeRemaining.value
   startTimestamp.value = Date.now()
 
-  // Request wake lock to keep screen on (optional, user can disable in browser)
-  requestWakeLock()
-
-  // Update app badge with initial time
-  updateAppBadge(timeRemaining.value)
-
   // Check if timer already exists (might have been kept alive from previous mount)
   const existingTimer = getTimer(props.widget.id)
   if (!existingTimer) {
@@ -219,16 +211,6 @@ const startTimer = () => {
         if (elapsed % 5 === 0) {
           saveState()
         }
-
-        // Update app badge every minute
-        if (elapsed % 60 === 0) {
-          updateAppBadge(timeRemaining.value)
-        }
-
-        // Update persistent notification every 30 seconds (less frequently to avoid spam)
-        if (elapsed % 30 === 0 && timeRemaining.value > 10) {
-          updatePersistentNotification()
-        }
       }
     }
   }, 1000)
@@ -244,12 +226,6 @@ const pauseTimer = () => {
     clearInterval(intervalId.value)
     intervalId.value = null
   }
-
-  // Release wake lock
-  releaseWakeLock()
-
-  // Clear app badge
-  clearAppBadge()
 
   // Unregister from active timers
   unregisterTimer(props.widget.id)
@@ -268,10 +244,6 @@ const resetTimer = () => {
     clearInterval(intervalId.value)
     intervalId.value = null
   }
-
-  // Release wake lock and clear badge
-  releaseWakeLock()
-  clearAppBadge()
 
   // Unregister from active timers
   unregisterTimer(props.widget.id)
@@ -301,28 +273,14 @@ const completeTimer = () => {
   // Play notification sound
   playNotificationSound()
 
-  // Vibrate if supported (iOS/Android)
-  if ('vibrate' in navigator) {
-    navigator.vibrate([200, 100, 200, 100, 200])
-  }
-
-  // Clear app badge
-  clearAppBadge()
-
-  // Release wake lock
-  releaseWakeLock()
-
   // Show browser notification if permission granted
   if ('Notification' in window && Notification.permission === 'granted') {
     new Notification('Pomodoro Timer', {
       body:
         timerType.value === 'work'
-          ? '🎯 Focus session complete! Time for a break.'
-          : '☕ Break complete! Ready to focus?',
+          ? 'Focus session complete! Time for a break.'
+          : 'Break complete! Ready to focus?',
       icon: '/favicon.ico',
-      badge: '/favicon.ico',
-      requireInteraction: true,
-      vibrate: [200, 100, 200],
     })
   }
 
@@ -366,94 +324,6 @@ const requestNotificationPermission = async () => {
   }
 }
 
-// Update app badge with time remaining (for iOS home screen icon)
-const updateAppBadge = async (seconds: number) => {
-  if ('setAppBadge' in navigator) {
-    try {
-      const minutes = Math.ceil(seconds / 60)
-      await (navigator as any).setAppBadge(minutes)
-    } catch (e) {
-      console.debug('Could not update app badge:', e)
-    }
-  }
-}
-
-// Clear app badge
-const clearAppBadge = async () => {
-  if ('clearAppBadge' in navigator) {
-    try {
-      await (navigator as any).clearAppBadge()
-    } catch (e) {
-      console.debug('Could not clear app badge:', e)
-    }
-  }
-}
-
-// Create or update persistent notification (for iOS lock screen)
-const updatePersistentNotification = async () => {
-  if ('Notification' in window && Notification.permission === 'granted') {
-    try {
-      const minutes = Math.floor(timeRemaining.value / 60)
-      const seconds = timeRemaining.value % 60
-      const timeText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-
-      const timerTypeText = timerType.value === 'work' ? '🎯 Focus' : '☕ Break'
-      const body = `${timerTypeText} - ${timeText} remaining`
-
-      // Close previous notification if exists
-      if (persistentNotificationId.value) {
-        // Notifications auto-close, but we'll track the ID
-      }
-
-      const notification = new Notification('Pomodoro Timer', {
-        body: body,
-        icon: '/favicon.ico',
-        badge: '/favicon.ico',
-        tag: `pomodoro-${props.widget.id}`, // Use tag to replace existing notification
-        requireInteraction: false, // Allow it to be persistent but not annoying
-        silent: true, // Don't make sound on updates
-      })
-
-      persistentNotificationId.value = notification.tag || null
-
-      // Auto-close after a short time to avoid clutter
-      setTimeout(() => {
-        notification.close()
-      }, 3000)
-    } catch (e) {
-      console.debug('Could not create persistent notification:', e)
-    }
-  }
-}
-
-// Request wake lock to keep screen on
-const requestWakeLock = async () => {
-  if ('wakeLock' in navigator) {
-    try {
-      wakeLock = await (navigator as any).wakeLock.request('screen')
-      console.log('Wake Lock acquired')
-
-      wakeLock.addEventListener('release', () => {
-        console.log('Wake Lock released')
-      })
-    } catch (e) {
-      console.debug('Could not acquire wake lock:', e)
-    }
-  }
-}
-
-// Release wake lock
-const releaseWakeLock = async () => {
-  if (wakeLock !== null) {
-    try {
-      await wakeLock.release()
-      wakeLock = null
-    } catch (e) {
-      console.debug('Could not release wake lock:', e)
-    }
-  }
-}
-
 // Switch timer type manually
 const switchTimerType = (type: TimerType) => {
   if (isRunning.value) {
@@ -486,9 +356,6 @@ onUnmounted(() => {
     clearInterval(intervalId.value)
     intervalId.value = null
   }
-  // Release wake lock and clear badge on unmount
-  releaseWakeLock()
-  clearAppBadge()
 })
 </script>
 

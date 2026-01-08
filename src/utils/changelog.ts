@@ -12,6 +12,8 @@ export const changelog: ChangelogEntry[] = [
       'Added live activity support for Pomodoro and Stopwatch timers',
       'Improve Tag charts',
       'Refactor some code for clarity',
+      'Fixed Tag visibility setting, now it hides the tag correctly',
+      'Add media session API support for MusicView, it should keep playing music when the app is in the background',
     ],
   },
   {
