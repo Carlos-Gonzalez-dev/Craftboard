@@ -323,6 +323,49 @@ const extractMatchingTags = (markdown: string, pattern: string): string[] => {
   return [...new Set(tags)]
 }
 
+// Helper to recursively extract blocks with tags from block tree
+const extractBlocksWithTags = (
+  block: any,
+  documentId: string,
+  documentTitle: string,
+  parentPath: string[] = [],
+): LogEntry[] => {
+  const entries: LogEntry[] = []
+  const markdown = block.markdown || ''
+  const tags = extractMatchingTags(markdown, '')
+
+  // Only include blocks that contain at least one of the user's saved tags
+  const matchingTags = tags.filter((tag) => savedTags.value.includes(tag))
+
+  if (matchingTags.length > 0) {
+    entries.push({
+      documentId,
+      documentTitle,
+      blockId: block.id,
+      markdown,
+      createdAt: block.metadata?.createdAt || undefined,
+      lastModifiedAt: block.metadata?.lastModifiedAt || undefined,
+      date: block.metadata?.createdAt,
+      tags: matchingTags,
+      clickableLink: undefined,
+    })
+  }
+
+  // Recursively process children
+  if (block.content && Array.isArray(block.content)) {
+    const newPath =
+      block.type === 'page' && block.markdown
+        ? [...parentPath, block.markdown.replace(/<\/?page>/g, '').trim()]
+        : parentPath
+
+    for (const child of block.content) {
+      entries.push(...extractBlocksWithTags(child, documentId, documentTitle, newPath))
+    }
+  }
+
+  return entries
+}
+
 // Load logs for all saved tags
 const loadLogs = async (forceRefresh = false) => {
   if (savedTags.value.length === 0) {
@@ -342,8 +385,6 @@ const loadLogs = async (forceRefresh = false) => {
   isLoading.value = true
   error.value = null
   logs.value = []
-  totalApiCalls.value = 1
-  completedApiCalls.value = 0
 
   try {
     const apiUrl = getApiUrl()
@@ -356,11 +397,11 @@ const loadLogs = async (forceRefresh = false) => {
       throw new Error('Craft API token not configured')
     }
 
-    // Build regex pattern for all saved tags
+    // Step 1: Search for documents containing the tags
     const patterns = savedTags.value.map((tag) => `#${tag}(?:\/[\w-]+)?`).join('|')
     const regexPattern = patterns || '#[\w-]+(?:\/[\w-]+)?'
 
-    const response = await fetch(
+    const searchResponse = await fetch(
       `${apiUrl}/documents/search?regexps=${encodeURIComponent(regexPattern)}&fetchMetadata=true`,
       {
         method: 'GET',
@@ -371,36 +412,46 @@ const loadLogs = async (forceRefresh = false) => {
       },
     )
 
-    completedApiCalls.value++
-
-    if (!response.ok) {
-      throw new Error(`Failed to search documents: ${response.statusText}`)
+    if (!searchResponse.ok) {
+      throw new Error(`Failed to search documents: ${searchResponse.statusText}`)
     }
 
-    const data = await response.json()
-    const items = data.items || []
+    const searchData = await searchResponse.json()
+    const documents = searchData.items || []
 
-    // Process results
+    // Step 2: Fetch blocks for each document with metadata
+    totalApiCalls.value = documents.length
+    completedApiCalls.value = 0
+
     const logEntries: LogEntry[] = []
 
-    for (const item of items) {
-      const tags = extractMatchingTags(item.markdown || '', '')
+    for (const doc of documents) {
+      try {
+        const blocksResponse = await fetch(
+          `${apiUrl}/blocks?id=${encodeURIComponent(doc.documentId)}&fetchMetadata=true`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        )
 
-      if (tags.length === 0) continue
+        completedApiCalls.value++
 
-      const entry: LogEntry = {
-        documentId: item.documentId,
-        documentTitle: item.title || 'Untitled',
-        blockId: item.documentId,
-        markdown: item.markdown || '',
-        createdAt: item.createdAt,
-        lastModifiedAt: item.lastModifiedAt,
-        date: item.createdAt,
-        tags,
-        clickableLink: item.clickableLink,
+        if (blocksResponse.ok) {
+          const blockData = await blocksResponse.json()
+          const documentTitle = doc.title || 'Untitled'
+
+          // Extract all blocks with tags from the tree
+          const blockEntries = extractBlocksWithTags(blockData, doc.documentId, documentTitle)
+          logEntries.push(...blockEntries)
+        }
+      } catch (blockError) {
+        console.error(`Error fetching blocks for document ${doc.documentId}:`, blockError)
+        // Continue with other documents even if one fails
       }
-
-      logEntries.push(entry)
     }
 
     // Sort by date (most recent first)
@@ -673,7 +724,7 @@ const tagOccurrencesByWeek = computed(() => {
   if (logs.value.length === 0) return weekData
 
   // Find min and max dates from logs
-  let minDate = new Date(logs.value[0].createdAt || new Date())
+  let minDate = new Date(logs.value[0]?.createdAt || new Date())
   let maxDate = new Date()
 
   logs.value.forEach((log) => {
@@ -722,7 +773,7 @@ const tagOccurrencesByMonth = computed(() => {
   if (logs.value.length === 0) return monthData
 
   // Find min and max dates from logs
-  let minDate = new Date(logs.value[0].createdAt || new Date())
+  let minDate = new Date(logs.value[0]?.createdAt || new Date())
   let maxDate = new Date()
 
   logs.value.forEach((log) => {
@@ -766,7 +817,7 @@ const tagOccurrencesByYear = computed(() => {
   if (logs.value.length === 0) return yearData
 
   // Find min and max dates from logs
-  let minDate = new Date(logs.value[0].createdAt || new Date())
+  let minDate = new Date(logs.value[0]?.createdAt || new Date())
   let maxDate = new Date()
 
   logs.value.forEach((log) => {
@@ -983,12 +1034,13 @@ onMounted(() => {
 
 <template>
   <div class="tags-view">
-    <ProgressIndicator
-      v-if="isLoading"
-      :completed="completedApiCalls"
-      :total="totalApiCalls"
-      message="Loading tags..."
-    />
+    <div v-if="isLoading" class="loading-container">
+      <ProgressIndicator
+        :completed="completedApiCalls"
+        :total="totalApiCalls"
+        message="Loading tags..."
+      />
+    </div>
 
     <div v-if="error && !isLoading" class="error-message">
       {{ error }}
@@ -1072,21 +1124,6 @@ onMounted(() => {
 
               <div v-else class="table-container">
                 <table class="logs-table">
-                  <thead>
-                    <tr>
-                      <th
-                        class="col-created sortable"
-                        @click="toggleSortOrder"
-                        title="Click to toggle sort order"
-                      >
-                        Created
-                        <span class="sort-indicator">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span>
-                      </th>
-                      <th class="col-modified">Modified</th>
-                      <th class="col-content">Content</th>
-                      <th class="col-action"></th>
-                    </tr>
-                  </thead>
                   <tbody>
                     <tr
                       v-for="(entry, index) in filteredLogs"
@@ -1098,12 +1135,6 @@ onMounted(() => {
                         <div class="date-cell">
                           <div class="date">{{ formatDate(entry.createdAt) }}</div>
                           <div class="time">{{ formatTime(entry.createdAt) }}</div>
-                        </div>
-                      </td>
-                      <td class="col-modified">
-                        <div class="date-cell">
-                          <div class="date">{{ formatDate(entry.lastModifiedAt) }}</div>
-                          <div class="time">{{ formatTime(entry.lastModifiedAt) }}</div>
                         </div>
                       </td>
                       <td class="col-content">
@@ -1283,6 +1314,14 @@ onMounted(() => {
   justify-content: center;
   gap: 12px;
   color: var(--text-tertiary);
+}
+
+.loading-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .empty-state p {
@@ -1623,8 +1662,7 @@ onMounted(() => {
   vertical-align: middle;
 }
 
-.col-created,
-.col-modified {
+.col-created {
   width: 140px;
   min-width: 140px;
 }
@@ -2184,8 +2222,7 @@ onMounted(() => {
     font-size: 12px;
   }
 
-  .col-created,
-  .col-modified {
+  .col-created {
     width: 100px;
     min-width: 100px;
   }
