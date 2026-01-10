@@ -1118,7 +1118,7 @@ onMounted(() => {
                 </button>
               </div>
 
-              <div v-if="filteredLogs.length === 0" class="no-results">
+              <div v-if="!isLoading && filteredLogs.length === 0" class="no-results">
                 <p>No documents found matching your filters.</p>
               </div>
 
@@ -1162,7 +1162,7 @@ onMounted(() => {
                 </table>
               </div>
             </div>
-            <div v-else class="empty-state">
+            <div v-else-if="!isLoading" class="empty-state">
               <Clock :size="48" />
               <p>No documents found</p>
               <p class="hint">No documents with these tags were found</p>
