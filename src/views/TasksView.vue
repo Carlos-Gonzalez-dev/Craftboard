@@ -930,16 +930,9 @@ const loadCalendarEvents = async (forceRefresh = false) => {
     const allEventsArrays = await Promise.all(eventPromises)
     const allEvents = allEventsArrays.flat()
 
-    // Filter events to only include those in a reasonable date range (current week ± 4 weeks)
-    const now = new Date()
-    const startRange = new Date(now)
-    startRange.setDate(startRange.getDate() - 28) // 4 weeks ago
-    const endRange = new Date(now)
-    endRange.setDate(endRange.getDate() + 28) // 4 weeks ahead
-
-    calendarEvents.value = allEvents.filter((event) => {
-      return event.start >= startRange && event.start <= endRange
-    })
+    // Do not restrict by current week; store all events.
+    // getCalendarEventsForDate() will pick the ones for the displayed day.
+    calendarEvents.value = allEvents
 
     setCachedCalendarEvents(calendarEvents.value)
     return true // API call made
@@ -1005,10 +998,12 @@ function setCachedCalendarEvents(data: CalendarEvent[]) {
 
 // Get calendar events for a specific date
 function getCalendarEventsForDate(date: Date): CalendarEvent[] {
-  const dateStr = date.toISOString().split('T')[0]
+  const y = date.getFullYear()
+  const m = date.getMonth()
+  const d = date.getDate()
   return calendarEvents.value.filter((event) => {
-    const eventDateStr = event.start.toISOString().split('T')[0]
-    return eventDateStr === dateStr
+    const es = event.start
+    return es.getFullYear() === y && es.getMonth() === m && es.getDate() === d
   })
 }
 
