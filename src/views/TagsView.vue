@@ -1194,7 +1194,7 @@ onMounted(() => {
                 </button>
               </div>
 
-              <div v-if="chartData.size === 0" class="no-results">
+              <div v-if="!isLoading && chartData.size === 0" class="no-results">
                 <p>No data available for the selected period.</p>
               </div>
 
