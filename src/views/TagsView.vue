@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, inject, h, watch } from 'vue'
 import { Clock, RefreshCw, ExternalLink, Plus, X, Search, BarChart3, List } from 'lucide-vue-next'
 import { getApiUrl, openCraftLink, getCacheExpiryMs } from '../utils/craftApi'
+import { createTagHueMap, createGetTagColor } from '../utils/tagColors'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ViewTabs from '../components/ViewTabs.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
@@ -467,22 +468,9 @@ const filterByTag = (tag: string) => {
   toggleTag(tag)
 }
 
-// Generate a unique color for a tag based on its text
-const getTagColor = (tag: string) => {
-  // Simple hash function to get a consistent number from string
-  let hash = 0
-  for (let i = 0; i < tag.length; i++) {
-    hash = tag.charCodeAt(i) + ((hash << 5) - hash)
-  }
-
-  // Convert hash to hue (0-360)
-  const hue = Math.abs(hash % 360)
-
-  // Return CSS custom properties that work with both themes
-  return {
-    '--tag-hue': hue,
-  }
-}
+// Use centralized tag color utilities
+const tagHueMap = createTagHueMap(displayTags)
+const getTagColor = createGetTagColor(tagHueMap)
 
 // Style helper for bars: keep proportions but ensure visibility for tiny/zero counts
 const getBarStyle = (tag: string, count: number) => {

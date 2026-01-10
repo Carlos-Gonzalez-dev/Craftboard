@@ -12,6 +12,7 @@ import {
   getSpaceId,
   getShareToken,
 } from '../utils/craftApi'
+import { createTagHueMap, createGetTagColor } from '../utils/tagColors'
 import { getFaviconUrl, getDomain } from '../utils/favicon'
 import { useRoute, useRouter } from 'vue-router'
 import ViewSubheader from '../components/ViewSubheader.vue'
@@ -81,7 +82,7 @@ const categories = computed(() => {
 // Get available tags from bookmarks in the selected category
 const allTags = computed(() => {
   const tagsSet = new Set<string>()
-  
+
   if (!selectedCategory.value || selectedCategory.value === '') {
     // When showing All, get tags from all bookmarks
     bookmarks.value.forEach((bookmark) => {
@@ -109,7 +110,7 @@ const selectedCategoryItems = computed(() => {
   // If no category selected (All), return all bookmarks
   if (!selectedCategory.value || selectedCategory.value === '') {
     let items = bookmarks.value
-    
+
     // Apply search filter
     if (searchQuery.value.trim()) {
       const query = searchQuery.value.toLowerCase()
@@ -122,7 +123,7 @@ const selectedCategoryItems = computed(() => {
             item.tags.some((tag: string) => tag.toLowerCase().includes(query))),
       )
     }
-    
+
     // Apply tag filters
     if (selectedTags.value.size > 0) {
       items = items.filter((item) => {
@@ -130,7 +131,7 @@ const selectedCategoryItems = computed(() => {
         return Array.from(selectedTags.value).some((tag) => item.tags.includes(tag))
       })
     }
-    
+
     return items
   }
   const found = groupedBookmarks.value.find(([category]) => category === selectedCategory.value)
@@ -164,7 +165,7 @@ const selectedCategoryItems = computed(() => {
 const initializeSelectedCategory = () => {
   // Check if there's a category in the URL query
   const categoryFromUrl = route.query.category as string | undefined
-  
+
   if (categoryFromUrl !== undefined) {
     // If category is empty string or 'all', show All
     if (categoryFromUrl === '' || categoryFromUrl.toLowerCase() === 'all') {
@@ -181,22 +182,9 @@ const initializeSelectedCategory = () => {
   }
 }
 
-// Generate a unique color for a tag based on its text
-const getTagColor = (tag: string) => {
-  // Simple hash function to get a consistent number from string
-  let hash = 0
-  for (let i = 0; i < tag.length; i++) {
-    hash = tag.charCodeAt(i) + ((hash << 5) - hash)
-  }
-
-  // Convert hash to hue (0-360)
-  const hue = Math.abs(hash % 360)
-
-  // Return CSS custom properties that work with both themes
-  return {
-    '--tag-hue': hue,
-  }
-}
+// Use centralized tag color utilities
+const tagHueMap = createTagHueMap(allTags)
+const getTagColor = createGetTagColor(tagHueMap)
 
 const getHeaders = () => {
   const token = getApiToken()
@@ -442,14 +430,14 @@ watch(
 // Clear tag filters when category changes
 watch(selectedCategory, (newCategory) => {
   selectedTags.value = new Set()
-  
+
   // Update URL query parameter
   const currentCategory = route.query.category
   const newCategoryParam = newCategory || ''
-  
+
   if (currentCategory !== newCategoryParam) {
     router.replace({
-      query: { ...route.query, category: newCategoryParam || undefined }
+      query: { ...route.query, category: newCategoryParam || undefined },
     })
   }
 })
@@ -479,7 +467,7 @@ onMounted(() => {
         h(ViewTabs, {
           tabs: [
             { id: '', label: 'All' },
-            ...categories.value.map((cat) => ({ id: cat, label: cat }))
+            ...categories.value.map((cat) => ({ id: cat, label: cat })),
           ],
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
@@ -528,7 +516,7 @@ onActivated(() => {
         h(ViewTabs, {
           tabs: [
             { id: '', label: 'All' },
-            ...categories.value.map((cat) => ({ id: cat, label: cat }))
+            ...categories.value.map((cat) => ({ id: cat, label: cat })),
           ],
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
@@ -568,7 +556,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
         h(ViewTabs, {
           tabs: [
             { id: '', label: 'All' },
-            ...categories.value.map((cat) => ({ id: cat, label: cat }))
+            ...categories.value.map((cat) => ({ id: cat, label: cat })),
           ],
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {

@@ -6,7 +6,10 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: '2026-01-10',
-    changes: ['Improve iCal support (recurring events, all-day events)'],
+    changes: [
+      'Improve iCal support (recurring events, all-day events)',
+      'Improve tags color scheme',
+    ],
   },
   {
     date: '2026-01-08v2',
