@@ -618,7 +618,7 @@ const extractTitleFromMarkdown = (markdown: string): string => {
   if (!markdown) return 'Untitled'
 
   // Remove markdown formatting and HTML tags
-  let text = markdown
+  const text = markdown
     .replace(/\*\*/g, '') // Remove bold
     .replace(/\*/g, '') // Remove italic
     .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Remove links, keep text

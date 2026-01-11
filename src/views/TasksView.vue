@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   RotateCw,
+  CircleCheck,
 } from 'lucide-vue-next'
 import {
   getApiUrl,
@@ -40,9 +41,13 @@ const setSubheader =
 const inboxTasks = computed(() => tasksApiStore.inboxTasks)
 const activeTasks = computed(() => tasksApiStore.activeTasks)
 const upcomingTasks = computed(() => tasksApiStore.upcomingTasks)
+const logbookTasks = computed(() => tasksApiStore.logbookTasks)
+const dailyNotesDoneTasks = computed(() => tasksApiStore.dailyNotesDoneTasks)
 const dailyNotes = computed(() => tasksApiStore.dailyNotes)
 const calendarEvents = computed(() => tasksApiStore.calendarEvents)
 const isLoading = computed(() => tasksApiStore.isLoading)
+const isLoadingLogbook = computed(() => tasksApiStore.isLoadingLogbook)
+const isLoadingWeekTasks = computed(() => tasksApiStore.isLoadingWeekTasks)
 const isLoadingCalendar = computed(() => tasksApiStore.isLoadingCalendar)
 const totalApiCalls = computed(() => tasksApiStore.totalApiCalls)
 const completedApiCalls = computed(() => tasksApiStore.completedApiCalls)
@@ -58,35 +63,52 @@ const viewMode = ref<'list' | 'week'>(
 
 // Initialize activeTab based on view mode
 // If week view, must use 'all' tab to show all tasks including completed ones
-const activeTab = ref<'all' | 'inbox' | 'active' | 'upcoming'>(
+const activeTab = ref<'all' | 'inbox' | 'active' | 'upcoming' | 'done'>(
   viewMode.value === 'week' ? 'all' : 'active',
 )
 
-// Handle tab change - disable in week view
+// Handle tab change - disable in week view (except for 'done')
 function handleTabChange(tab: string) {
-  // In week view, only allow 'all' tab
-  if (viewMode.value === 'week') {
+  // In week view, only allow 'all' and 'done' tabs
+  if (viewMode.value === 'week' && tab !== 'all' && tab !== 'done') {
     return
   }
-  activeTab.value = tab as 'all' | 'inbox' | 'active' | 'upcoming'
+  activeTab.value = tab as 'all' | 'inbox' | 'active' | 'upcoming' | 'done'
+
+  // Lazy load logbook and current week tasks when Done tab is selected
+  if (tab === 'done') {
+    loadDoneTasks()
+  }
+}
+
+// Load done tasks (logbook + current week from daily notes)
+async function loadDoneTasks() {
+  // Load logbook if not loaded
+  if (logbookTasks.value.length === 0) {
+    tasksApiStore.loadLogbook()
+  }
+  // Load current week tasks from daily notes
+  await tasksApiStore.loadWeekTasks(currentWeekStart.value)
 }
 
 // Watch view mode changes and save to localStorage
 watch(viewMode, (newMode) => {
   localStorage.setItem(VIEW_MODE_STORAGE_KEY, newMode)
-  // When switching to week view, set to 'all' and disable tabs
-  if (newMode === 'week') {
+  // When switching to week view, set to 'all' unless already on 'done'
+  if (newMode === 'week' && activeTab.value !== 'done') {
     activeTab.value = 'all'
-    // Reinitialize scroll listeners when switching to week view
+  }
+  // Reinitialize scroll listeners when switching to week view
+  if (newMode === 'week') {
     nextTick(() => {
       setupScrollListeners()
     })
   }
 })
 
-// Ensure activeTab stays as 'all' when in week view
+// Ensure activeTab stays as 'all' or 'done' when in week view
 watch(activeTab, (newTab) => {
-  if (viewMode.value === 'week' && newTab !== 'all') {
+  if (viewMode.value === 'week' && newTab !== 'all' && newTab !== 'done') {
     activeTab.value = 'all'
   }
 })
@@ -104,6 +126,13 @@ function getCurrentWeekMonday(): Date {
 
 const currentWeekStart = ref<Date>(getCurrentWeekMonday())
 
+// Watch week navigation to load tasks when on Done tab
+watch(currentWeekStart, (newWeekStart) => {
+  if (activeTab.value === 'done' && !tasksApiStore.isWeekLoaded(newWeekStart)) {
+    tasksApiStore.loadWeekTasks(newWeekStart)
+  }
+})
+
 // Week grid scroll container ref
 const weekGridScrollContainer = ref<HTMLElement | null>(null)
 
@@ -116,17 +145,18 @@ function checkMobile() {
 // Tabs configuration
 const tabs = computed(() => {
   const baseTabs = [
-    { id: 'all', label: 'All', icon: CheckSquare },
-    { id: 'inbox', label: 'Inbox', icon: Inbox },
-    { id: 'active', label: 'Active', icon: CalendarDays },
-    { id: 'upcoming', label: 'Upcoming', icon: Calendar },
+    { id: 'all', label: 'All', icon: CheckSquare, isProject: true },
+    { id: 'inbox', label: 'Inbox', icon: Inbox, isProject: true },
+    { id: 'active', label: 'Active', icon: CalendarDays, isProject: true },
+    { id: 'upcoming', label: 'Upcoming', icon: Calendar, isProject: true },
+    { id: 'done', label: 'Done', icon: CircleCheck, isProject: false },
   ]
 
-  // In week view, disable all tabs except 'all'
+  // In week view, disable all tabs except 'all' and 'done'
   if (viewMode.value === 'week') {
     return baseTabs.map((tab) => ({
       ...tab,
-      disabled: tab.id !== 'all',
+      disabled: tab.id !== 'all' && tab.id !== 'done',
     }))
   }
 
@@ -163,6 +193,25 @@ const displayedTasks = computed(() => {
     case 'upcoming':
       tasks = upcomingTasks.value
       break
+    case 'done':
+      // For done tab, combine logbook + daily notes tasks (excluding subtasks)
+      const allDoneTasks = [...logbookTasks.value, ...dailyNotesDoneTasks.value]
+      // Deduplicate by task ID
+      const seenIds = new Set<string>()
+      tasks = allDoneTasks.filter((task) => {
+        if (seenIds.has(task.id)) return false
+        seenIds.add(task.id)
+        if (isSubtask(task)) return false
+        const title = extractTitleFromMarkdown(task.markdown || '')
+        return title && title.trim() !== ''
+      })
+      // Sort by completedAt descending (most recent first)
+      tasks.sort((a, b) => {
+        const dateA = a.taskInfo?.completedAt || a.completedAt || ''
+        const dateB = b.taskInfo?.completedAt || b.completedAt || ''
+        return dateB.localeCompare(dateA)
+      })
+      return tasks
     case 'all':
     default:
       tasks = allTasks.value
@@ -234,6 +283,13 @@ function extractTitleFromMarkdown(markdown: string): string {
     .replace(/^-\s*\[[x\s~]\]\s*/, '')
     .replace(/^\s*-\s*\[[x\s~]\]\s*/, '')
     .trim()
+}
+
+// Helper function to check if a task is a subtask (indented in markdown)
+function isSubtask(task: CraftTask): boolean {
+  const markdown = task.markdown || ''
+  // Subtasks have leading whitespace before the "- [ ]" checkbox
+  return markdown.startsWith(' ') || markdown.startsWith('\t')
 }
 
 // Helper function to get task status
@@ -311,6 +367,13 @@ function formatDueDate(task: CraftTask): string {
   const dueDate = getDueDate(task)
   if (!dueDate) return ''
   return new Date(dueDate).toLocaleDateString()
+}
+
+// Helper function to format completed date for display
+function formatCompletedDate(task: CraftTask): string {
+  const completedAt = task.taskInfo?.completedAt || task.completedAt
+  if (!completedAt) return ''
+  return new Date(completedAt).toLocaleDateString()
 }
 
 // Helper function to check if task has a deadline
@@ -610,6 +673,38 @@ function getTasksForDate(tasks: CraftTask[], date: Date): CraftTask[] {
   return result
 }
 
+// Get completed/canceled tasks for a specific date (based on completedAt)
+function getCompletedTasksForDate(date: Date): CraftTask[] {
+  const dateStr = date.toISOString().split('T')[0]
+
+  // Combine logbook + daily notes tasks
+  const allDoneTasks = [...logbookTasks.value, ...dailyNotesDoneTasks.value]
+
+  // Deduplicate and filter
+  const seenIds = new Set<string>()
+  return allDoneTasks.filter((task) => {
+    if (seenIds.has(task.id)) return false
+    seenIds.add(task.id)
+
+    // Exclude subtasks
+    if (isSubtask(task)) return false
+
+    const taskTitle = extractTitleFromMarkdown(task.markdown || '')
+    if (!taskTitle || taskTitle.trim() === '') {
+      return false
+    }
+
+    // Get completedAt date
+    const completedAt = task.taskInfo?.completedAt || task.completedAt
+    if (!completedAt) return false
+
+    const completedDate = new Date(completedAt)
+    const completedDateStr = completedDate.toISOString().split('T')[0]
+
+    return completedDateStr === dateStr
+  })
+}
+
 function goToPreviousWeek() {
   const newDate = new Date(currentWeekStart.value)
   newDate.setDate(newDate.getDate() - 7)
@@ -733,7 +828,16 @@ function getCalendarEventsForDate(date: Date): CalendarEvent[] {
 }
 
 const refreshTasks = async () => {
-  // Load calendar URLs
+  // If on Done tab, only refresh logbook and current week
+  if (activeTab.value === 'done') {
+    await Promise.all([
+      tasksApiStore.loadLogbook(true),
+      tasksApiStore.loadWeekTasks(currentWeekStart.value, true),
+    ])
+    return
+  }
+
+  // Otherwise refresh all pending tasks
   let calendarUrls: string[] = []
   const savedUrls = localStorage.getItem('calendar-urls')
   if (savedUrls) {
@@ -949,43 +1053,90 @@ onActivated(() => {
                           <h3>{{ formatDayHeader(day) }}</h3>
                         </div>
                         <div class="day-tasks">
-                          <!-- Calendar Events -->
+                          <!-- Loading state for logbook/week tasks in week view -->
                           <div
-                            v-for="event in getCalendarEventsForDate(day)"
-                            :key="`event-${event.id}`"
-                            class="week-calendar-event"
+                            v-if="activeTab === 'done' && (isLoadingLogbook || isLoadingWeekTasks)"
+                            class="day-loading"
                           >
-                            <div class="week-calendar-event-header">
-                              <div class="week-calendar-event-title-wrapper">
-                                <h4 class="week-calendar-event-title">{{ event.title }}</h4>
+                            Loading...
+                          </div>
+
+                          <template v-else-if="activeTab === 'done'">
+                            <!-- Completed Tasks (Done tab) -->
+                            <div
+                              v-for="task in getCompletedTasksForDate(day)"
+                              :key="task.id"
+                              class="week-task-item"
+                              :class="`status-${getTaskStatus(task)}`"
+                            >
+                              <div class="week-task-header">
+                                <div class="week-task-title-wrapper">
+                                  <h4 class="week-task-title" @click="openTaskInCraft(task)">
+                                    {{ extractTitleFromMarkdown(task.markdown) }}
+                                  </h4>
+                                </div>
+                                <span
+                                  class="status-badge-small"
+                                  :class="`status-badge-${getTaskStatus(task)}`"
+                                >
+                                  {{ getTaskStatus(task) === 'done' ? 'Done' : 'Canceled' }}
+                                </span>
                               </div>
-                              <Calendar
-                                :size="12"
-                                class="calendar-event-icon"
-                                title="Calendar event"
-                              />
-                            </div>
-                            <div v-if="event.location" class="week-calendar-event-location">
-                              <span>{{ event.location }}</span>
+                              <div
+                                v-if="getDocumentTitle(task) && getDocumentId(task)"
+                                class="week-task-document"
+                                @click.stop="openDocumentInCraft(task)"
+                              >
+                                <FileText :size="12" />
+                                <span>{{ getDocumentTitle(task) }}</span>
+                              </div>
                             </div>
                             <div
-                              v-if="event.start.getHours() !== 0 || event.start.getMinutes() !== 0"
-                              class="week-calendar-event-time"
+                              v-if="getCompletedTasksForDate(day).length === 0"
+                              class="day-empty"
                             >
-                              <span>{{ formatEventTime(event.start, event.end) }}</span>
+                              No completed tasks
                             </div>
-                          </div>
-                          <!-- Tasks -->
-                          <div
-                            v-for="task in getTasksForDate(displayedTasks, day)"
-                            :key="task.id"
-                            class="week-task-item"
-                            :class="[
-                              `status-${getTaskStatus(task)}`,
-                              { overdue: isOverdueOnScheduledDate(task, day) },
-                              { 'recurring-pending': isPendingRecurringTask(task, day) },
-                            ]"
-                          >
+                          </template>
+
+                          <template v-else>
+                            <!-- Calendar Events -->
+                            <div
+                              v-for="event in getCalendarEventsForDate(day)"
+                              :key="`event-${event.id}`"
+                              class="week-calendar-event"
+                            >
+                              <div class="week-calendar-event-header">
+                                <div class="week-calendar-event-title-wrapper">
+                                  <h4 class="week-calendar-event-title">{{ event.title }}</h4>
+                                </div>
+                                <Calendar
+                                  :size="12"
+                                  class="calendar-event-icon"
+                                  title="Calendar event"
+                                />
+                              </div>
+                              <div v-if="event.location" class="week-calendar-event-location">
+                                <span>{{ event.location }}</span>
+                              </div>
+                              <div
+                                v-if="event.start.getHours() !== 0 || event.start.getMinutes() !== 0"
+                                class="week-calendar-event-time"
+                              >
+                                <span>{{ formatEventTime(event.start, event.end) }}</span>
+                              </div>
+                            </div>
+                            <!-- Tasks -->
+                            <div
+                              v-for="task in getTasksForDate(displayedTasks, day)"
+                              :key="task.id"
+                              class="week-task-item"
+                              :class="[
+                                `status-${getTaskStatus(task)}`,
+                                { overdue: isOverdueOnScheduledDate(task, day) },
+                                { 'recurring-pending': isPendingRecurringTask(task, day) },
+                              ]"
+                            >
                             <div class="week-task-header">
                               <div class="week-task-title-wrapper">
                                 <h4 class="week-task-title" @click="openTaskInCraft(task)">
@@ -1041,12 +1192,13 @@ onActivated(() => {
                               <span>{{ getDocumentTitle(task) }}</span>
                             </div>
                           </div>
-                          <div
-                            v-if="getTasksForDate(displayedTasks, day).length === 0"
-                            class="day-empty"
-                          >
-                            No tasks
-                          </div>
+                            <div
+                              v-if="getTasksForDate(displayedTasks, day).length === 0"
+                              class="day-empty"
+                            >
+                              No tasks
+                            </div>
+                          </template>
                         </div>
                       </div>
                     </div>
@@ -1064,11 +1216,80 @@ onActivated(() => {
 
               <!-- List View -->
               <div v-else class="tasks-list">
-                <div v-if="displayedTasks.length === 0" class="empty-state">
-                  <CheckSquare :size="48" class="empty-icon" />
-                  <p class="empty-text">No tasks found</p>
+                <!-- Loading state for logbook/week tasks -->
+                <div
+                  v-if="activeTab === 'done' && (isLoadingLogbook || isLoadingWeekTasks)"
+                  class="loading-state"
+                >
+                  <div class="spinner"></div>
+                  <p>Loading completed tasks...</p>
                 </div>
 
+                <div
+                  v-else-if="displayedTasks.length === 0"
+                  class="empty-state"
+                >
+                  <CheckSquare :size="48" class="empty-icon" />
+                  <p class="empty-text">
+                    {{ activeTab === 'done' ? 'No completed tasks found' : 'No tasks found' }}
+                  </p>
+                </div>
+
+                <!-- Done tasks table (different columns) -->
+                <div v-else-if="activeTab === 'done'" class="tasks-table-container">
+                  <table class="tasks-table">
+                    <thead>
+                      <tr>
+                        <th class="col-title">Title</th>
+                        <th class="col-completed-date">Completed</th>
+                        <th class="col-document">Document</th>
+                        <th class="col-status">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="task in displayedTasks"
+                        :key="task.id"
+                        class="task-row"
+                        :class="`status-${getTaskStatus(task)}`"
+                      >
+                        <td class="col-title">
+                          <span class="task-title" @click="openTaskInCraft(task)">
+                            {{ extractTitleFromMarkdown(task.markdown) }}
+                          </span>
+                        </td>
+                        <td class="col-completed-date">
+                          <div v-if="formatCompletedDate(task)" class="task-meta">
+                            <CircleCheck :size="14" />
+                            <span>{{ formatCompletedDate(task) }}</span>
+                          </div>
+                          <span v-else class="task-meta-empty">—</span>
+                        </td>
+                        <td class="col-document">
+                          <div
+                            v-if="getDocumentTitle(task) && getDocumentId(task)"
+                            class="task-meta task-document-link"
+                            @click.stop="openDocumentInCraft(task)"
+                          >
+                            <FileText :size="14" />
+                            <span>{{ getDocumentTitle(task) }}</span>
+                          </div>
+                          <span v-else class="task-meta-empty">—</span>
+                        </td>
+                        <td class="col-status">
+                          <span
+                            class="status-badge"
+                            :class="`status-badge-${getTaskStatus(task)}`"
+                          >
+                            {{ getTaskStatus(task) === 'done' ? 'Done' : 'Canceled' }}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Regular tasks table -->
                 <div v-else class="tasks-table-container">
                   <table class="tasks-table">
                     <thead>
@@ -1323,14 +1544,6 @@ onActivated(() => {
 
 .tasks-table tbody tr:last-child {
   border-bottom: none;
-}
-
-.tasks-table tbody tr.status-done {
-  opacity: 0.6;
-}
-
-.tasks-table tbody tr.status-canceled {
-  opacity: 0.5;
 }
 
 .tasks-table tbody tr.status-canceled .task-title {
@@ -1848,23 +2061,24 @@ onActivated(() => {
 }
 
 .week-task-item.status-done {
-  opacity: 0.7;
   background: rgba(34, 197, 94, 0.1);
   border-left: 3px solid rgba(34, 197, 94, 0.5);
 }
 
-.week-task-item.status-done .week-task-title {
-  color: var(--text-secondary);
+.week-task-item.status-done:hover {
+  background: rgba(34, 197, 94, 0.18);
 }
 
 .week-task-item.status-canceled {
-  opacity: 0.6;
   background: rgba(107, 114, 128, 0.1);
   border-left: 3px solid rgba(107, 114, 128, 0.5);
 }
 
+.week-task-item.status-canceled:hover {
+  background: rgba(107, 114, 128, 0.18);
+}
+
 .week-task-item.status-canceled .week-task-title {
-  color: var(--text-secondary);
   text-decoration: line-through;
 }
 
@@ -2067,5 +2281,63 @@ onActivated(() => {
   flex-direction: column;
   gap: 16px;
   padding: 8px 16px;
+}
+
+/* Status badges for Done tab */
+.col-completed-date {
+  width: 140px;
+}
+
+.col-status {
+  width: 100px;
+  text-align: center;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.status-badge-done {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--btn-success-bg);
+}
+
+.status-badge-canceled {
+  background: rgba(107, 114, 128, 0.15);
+  color: #6b7280;
+}
+
+.status-badge-small {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+
+.status-badge-small.status-badge-done {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--btn-success-bg);
+}
+
+.status-badge-small.status-badge-canceled {
+  background: rgba(107, 114, 128, 0.2);
+  color: #6b7280;
+}
+
+/* Day loading state */
+.day-loading {
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  padding: 16px 8px;
+  font-style: italic;
 }
 </style>

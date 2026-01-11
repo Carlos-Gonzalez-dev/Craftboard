@@ -10,6 +10,11 @@ export const useTasksApiStore = defineStore('tasksApi', () => {
   const inboxTasks = ref<CraftTask[]>([])
   const activeTasks = ref<CraftTask[]>([])
   const upcomingTasks = ref<CraftTask[]>([])
+  const logbookTasks = ref<CraftTask[]>([])
+  const dailyNotesDoneTasks = ref<CraftTask[]>([])
+  const loadedWeeks = ref<Set<string>>(new Set())
+  const isLoadingLogbook = ref(false)
+  const isLoadingWeekTasks = ref(false)
   const dailyNotes = ref<Map<string, CraftDocument>>(new Map())
   const calendarEvents = ref<CalendarEvent[]>([])
   const isLoading = ref(false)
@@ -30,6 +35,123 @@ export const useTasksApiStore = defineStore('tasksApi', () => {
     cache.setCachedData(type, result.items)
     completedApiCalls.value++
     return result.items
+  }
+
+  // Lazy load logbook tasks (only when user clicks Done tab)
+  const loadLogbook = async (forceRefresh = false): Promise<CraftTask[]> => {
+    const cached = cache.getCachedData<CraftTask[]>('logbook')
+    if (!forceRefresh && cached) {
+      logbookTasks.value = cached
+      return cached
+    }
+
+    isLoadingLogbook.value = true
+    try {
+      const result = await fetchTasks('logbook')
+      logbookTasks.value = result.items
+      cache.setCachedData('logbook', result.items)
+      return result.items
+    } catch (error) {
+      console.error('Error loading logbook:', error)
+      return []
+    } finally {
+      isLoadingLogbook.value = false
+    }
+  }
+
+  // Helper to get week key from date (YYYY-Wnn format)
+  const getWeekKey = (date: Date): string => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+    const dayNum = d.getUTCDay() || 7
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+    const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+    return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
+  }
+
+  // Helper to format date as YYYY-MM-DD
+  const formatDateStr = (date: Date): string => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // Load completed tasks from daily notes for a specific week
+  const loadWeekTasks = async (weekStart: Date, forceRefresh = false): Promise<CraftTask[]> => {
+    const weekKey = getWeekKey(weekStart)
+
+    // Check if already loaded (and not forcing refresh)
+    if (!forceRefresh && loadedWeeks.value.has(weekKey)) {
+      return dailyNotesDoneTasks.value
+    }
+
+    // Check cache
+    const cacheKey = `week-tasks-${weekKey}`
+    const cached = cache.getCachedData<CraftTask[]>(cacheKey)
+    if (!forceRefresh && cached) {
+      // Merge with existing tasks (avoid duplicates)
+      const existingIds = new Set(dailyNotesDoneTasks.value.map((t) => t.id))
+      const newTasks = cached.filter((t) => !existingIds.has(t.id))
+      dailyNotesDoneTasks.value = [...dailyNotesDoneTasks.value, ...newTasks]
+      loadedWeeks.value.add(weekKey)
+      return dailyNotesDoneTasks.value
+    }
+
+    isLoadingWeekTasks.value = true
+    try {
+      // Get dates for the week (7 days starting from weekStart)
+      const dates: string[] = []
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(weekStart)
+        date.setDate(date.getDate() + i)
+        dates.push(formatDateStr(date))
+      }
+
+      // Find daily notes that exist for these dates
+      const dailyNotesForWeek = dates
+        .map((dateStr) => dailyNotes.value.get(dateStr))
+        .filter((doc): doc is CraftDocument => !!doc)
+
+      // Fetch tasks for each daily note in parallel
+      const taskPromises = dailyNotesForWeek.map(async (doc) => {
+        try {
+          const result = await fetchTasks('document', doc.id)
+          // Filter only done/canceled tasks
+          return result.items.filter(
+            (task) =>
+              task.taskInfo?.state === 'done' || task.taskInfo?.state === 'canceled',
+          )
+        } catch (error) {
+          console.error(`Error fetching tasks for daily note ${doc.id}:`, error)
+          return []
+        }
+      })
+
+      const allTasksArrays = await Promise.all(taskPromises)
+      const weekTasks = allTasksArrays.flat()
+
+      // Cache the week's tasks
+      cache.setCachedData(cacheKey, weekTasks)
+
+      // Merge with existing tasks (avoid duplicates)
+      const existingIds = new Set(dailyNotesDoneTasks.value.map((t) => t.id))
+      const newTasks = weekTasks.filter((t) => !existingIds.has(t.id))
+      dailyNotesDoneTasks.value = [...dailyNotesDoneTasks.value, ...newTasks]
+
+      loadedWeeks.value.add(weekKey)
+      return dailyNotesDoneTasks.value
+    } catch (error) {
+      console.error('Error loading week tasks:', error)
+      return dailyNotesDoneTasks.value
+    } finally {
+      isLoadingWeekTasks.value = false
+    }
+  }
+
+  // Check if a week is loaded
+  const isWeekLoaded = (weekStart: Date): boolean => {
+    return loadedWeeks.value.has(getWeekKey(weekStart))
   }
 
   const loadDailyNotes = async (forceRefresh = false): Promise<boolean> => {
@@ -164,8 +286,16 @@ export const useTasksApiStore = defineStore('tasksApi', () => {
     cache.clearCache('inbox')
     cache.clearCache('active')
     cache.clearCache('upcoming')
+    cache.clearCache('logbook')
     cache.clearCache('daily_notes')
     cache.clearCache('calendar_events')
+    // Clear week task caches
+    loadedWeeks.value.forEach((weekKey) => {
+      cache.clearCache(`week-tasks-${weekKey}`)
+    })
+    logbookTasks.value = []
+    dailyNotesDoneTasks.value = []
+    loadedWeeks.value = new Set()
     await initializeTasks(calendarUrls, true)
   }
 
@@ -177,14 +307,21 @@ export const useTasksApiStore = defineStore('tasksApi', () => {
     inboxTasks: computed(() => inboxTasks.value),
     activeTasks: computed(() => activeTasks.value),
     upcomingTasks: computed(() => upcomingTasks.value),
+    logbookTasks: computed(() => logbookTasks.value),
+    dailyNotesDoneTasks: computed(() => dailyNotesDoneTasks.value),
     dailyNotes: computed(() => dailyNotes.value),
     calendarEvents: computed(() => calendarEvents.value),
     isLoading: computed(() => isLoading.value),
+    isLoadingLogbook: computed(() => isLoadingLogbook.value),
+    isLoadingWeekTasks: computed(() => isLoadingWeekTasks.value),
     isLoadingCalendar: computed(() => isLoadingCalendar.value),
     totalApiCalls: computed(() => totalApiCalls.value),
     completedApiCalls: computed(() => completedApiCalls.value),
     initializeTasks,
     refreshTasks,
+    loadLogbook,
+    loadWeekTasks,
+    isWeekLoaded,
     clearAllCache,
   }
 })
