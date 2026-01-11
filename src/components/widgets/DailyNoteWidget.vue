@@ -183,19 +183,31 @@ onMounted(async () => {
   }
 })
 
+// Process tags in HTML content
+const processTagsInHtml = (htmlContent: string): string => {
+  // Match #tag or #tag/subtag patterns (not inside HTML tags)
+  // Tags can contain letters, numbers, hyphens, underscores, and forward slashes
+  return htmlContent.replace(
+    /(#[\w-]+(?:\/[\w-]+)*)/g,
+    '<span class="tag">$1</span>',
+  )
+}
+
 // Render markdown to HTML
 const html = computed(() => {
   if (!markdown.value) return ''
   try {
-    return marked(markdown.value)
+    const rendered = marked(markdown.value) as string
+    return processTagsInHtml(rendered)
   } catch (err) {
     console.error('Markdown rendering error:', err)
     // Fallback: escape HTML and preserve line breaks
-    return markdown.value
+    const escaped = markdown.value
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/\n/g, '<br>')
+    return processTagsInHtml(escaped)
   }
 })
 
@@ -484,6 +496,17 @@ const openInCraft = async () => {
 
 .markdown-content :deep(a:visited) {
   color: var(--btn-primary-bg);
+}
+
+/* Tag styling */
+.markdown-content :deep(.tag) {
+  display: inline-block;
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 500;
 }
 
 /* Hide bullet markers for task lists */

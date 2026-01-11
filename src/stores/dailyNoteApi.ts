@@ -80,10 +80,10 @@ export const useDailyNoteApiStore = defineStore('dailyNoteApi', () => {
       if (block.listStyle === 'task') {
         return lines
       }
-      // Recursively process subblocks
-      if (Array.isArray(block.subblocks)) {
-        for (const subblock of block.subblocks) {
-          lines.push(...extractMarkdown(subblock))
+      // Recursively process content (API uses 'content', not 'subblocks')
+      if (Array.isArray(block.content)) {
+        for (const childBlock of block.content) {
+          lines.push(...extractMarkdown(childBlock))
         }
       }
       return lines
