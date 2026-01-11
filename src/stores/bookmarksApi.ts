@@ -9,6 +9,7 @@ export interface BookmarkItem {
   url: string
   category: string
   tags?: string[]
+  env?: 'dev' | 'staging' | 'prod'
 }
 
 export const useBookmarksApiStore = defineStore('bookmarksApi', () => {
@@ -52,6 +53,8 @@ export const useBookmarksApiStore = defineStore('bookmarksApi', () => {
             ''
           const tags =
             properties.tags || properties.Tags || properties['tags'] || properties['Tags'] || []
+          const env =
+            properties.env || properties.Env || properties['env'] || properties['Env'] || ''
 
           // Only include items with mandatory fields (title can be empty, but URL and category are required)
           if (url && category) {
@@ -61,6 +64,9 @@ export const useBookmarksApiStore = defineStore('bookmarksApi', () => {
               url: String(url),
               category: String(category),
               tags: Array.isArray(tags) ? tags.map((t: any) => String(t)) : [],
+              env: env && ['dev', 'staging', 'prod'].includes(String(env).toLowerCase())
+                ? (String(env).toLowerCase() as 'dev' | 'staging' | 'prod')
+                : undefined,
             }
           }
           return null

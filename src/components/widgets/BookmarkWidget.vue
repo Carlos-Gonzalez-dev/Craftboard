@@ -41,6 +41,7 @@ interface BookmarkItem {
   url: string
   category: string
   tags?: string[]
+  env?: 'dev' | 'staging' | 'prod'
 }
 
 const discoverCollection = async () => {
@@ -187,7 +188,10 @@ watch(
           v-for="bookmark in filteredBookmarks"
           :key="bookmark.id"
           @click="selectBookmark(bookmark)"
-          class="bookmark-option"
+          :class="[
+            'bookmark-option',
+            bookmark.env ? `bookmark-option-${bookmark.env}` : ''
+          ]"
         >
           <img
             :src="getFaviconUrl(bookmark.url)"
@@ -200,7 +204,15 @@ watch(
             "
           />
           <div class="bookmark-info">
-            <div class="bookmark-title">{{ bookmark.title || getDomain(bookmark.url) }}</div>
+            <div class="bookmark-title-row">
+              <div class="bookmark-title">{{ bookmark.title || getDomain(bookmark.url) }}</div>
+              <span
+                v-if="bookmark.env"
+                :class="['env-badge', `env-badge-${bookmark.env}`]"
+              >
+                {{ bookmark.env }}
+              </span>
+            </div>
             <div class="bookmark-url">{{ bookmark.url }}</div>
             <div class="bookmark-category">{{ bookmark.category }}</div>
           </div>
@@ -215,7 +227,10 @@ watch(
         @click.prevent="openBookmark"
         target="_blank"
         rel="noopener noreferrer"
-        class="bookmark-link"
+        :class="[
+          'bookmark-link',
+          selectedBookmark.env ? `bookmark-link-${selectedBookmark.env}` : ''
+        ]"
       >
         <img
           :src="getFaviconUrl(selectedBookmark.url)"
@@ -228,8 +243,16 @@ watch(
           "
         />
         <div class="bookmark-content">
-          <div class="bookmark-title-large">
-            {{ selectedBookmark.title || getDomain(selectedBookmark.url) }}
+          <div class="bookmark-header">
+            <div class="bookmark-title-large">
+              {{ selectedBookmark.title || getDomain(selectedBookmark.url) }}
+            </div>
+            <span
+              v-if="selectedBookmark.env"
+              :class="['env-badge', `env-badge-${selectedBookmark.env}`]"
+            >
+              {{ selectedBookmark.env }}
+            </span>
           </div>
           <div class="bookmark-url-small">{{ getDomain(selectedBookmark.url) }}</div>
           <button
@@ -370,6 +393,33 @@ watch(
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
 }
 
+.bookmark-option-dev {
+  border-left: 3px solid #3b82f6;
+}
+
+.bookmark-option-dev:hover {
+  border-left-color: #2563eb;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+.bookmark-option-staging {
+  border-left: 3px solid #f59e0b;
+}
+
+.bookmark-option-staging:hover {
+  border-left-color: #d97706;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+}
+
+.bookmark-option-prod {
+  border-left: 3px solid #22c55e;
+}
+
+.bookmark-option-prod:hover {
+  border-left-color: #16a34a;
+  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.2);
+}
+
 .bookmark-favicon {
   width: 20px;
   height: 20px;
@@ -382,6 +432,12 @@ watch(
 .bookmark-info {
   flex: 1;
   min-width: 0;
+}
+
+.bookmark-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .bookmark-title {
@@ -416,6 +472,7 @@ watch(
   justify-content: center;
   padding: 16px;
   position: relative;
+  container-type: inline-size;
 }
 
 .bookmark-link {
@@ -423,12 +480,44 @@ watch(
   align-items: center;
   gap: 12px;
   padding: 12px;
+  width: 100%;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
   text-decoration: none;
   color: inherit;
   transition: all 0.2s ease;
+}
+
+/* Layout vertical para widgets pequeños */
+@container (max-width: 300px) {
+  .bookmark-link {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  
+  .bookmark-content {
+    align-items: center;
+  }
+  
+  .bookmark-header {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .bookmark-title-large {
+    text-align: center;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  
+  .bookmark-url-small {
+    text-align: center;
+  }
 }
 
 .bookmark-link:hover {
@@ -438,6 +527,33 @@ watch(
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
 }
 
+.bookmark-link-dev {
+  border-left: 3px solid #3b82f6;
+}
+
+.bookmark-link-dev:hover {
+  border-left-color: #2563eb;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+.bookmark-link-staging {
+  border-left: 3px solid #f59e0b;
+}
+
+.bookmark-link-staging:hover {
+  border-left-color: #d97706;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+}
+
+.bookmark-link-prod {
+  border-left: 3px solid #22c55e;
+}
+
+.bookmark-link-prod:hover {
+  border-left-color: #16a34a;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.2);
+}
+
 .bookmark-favicon-large {
   width: 48px;
   height: 48px;
@@ -445,6 +561,15 @@ watch(
   background: white;
   border-radius: 8px;
   padding: 4px;
+  transition: all 0.2s ease;
+}
+
+/* Favicon más pequeño en widgets pequeños */
+@container (max-width: 300px) {
+  .bookmark-favicon-large {
+    width: 40px;
+    height: 40px;
+  }
 }
 
 .bookmark-content {
@@ -452,14 +577,55 @@ watch(
   min-width: 0;
 }
 
+.bookmark-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 .bookmark-title-large {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+}
+
+/* Permitir que el título se ajuste en widgets pequeños */
+@container (max-width: 300px) {
+  .bookmark-title-large {
+    font-size: 14px;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}
+
+.env-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.env-badge-dev {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.env-badge-staging {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.env-badge-prod {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
 }
 
 .bookmark-url-small {

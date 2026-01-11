@@ -37,6 +37,7 @@ const errorMessage = ref('')
 const selectedCategory = ref<string | null>(null)
 const searchQuery = ref('')
 const selectedTags = ref<Set<string>>(new Set())
+const selectedEnv = ref<'dev' | 'staging' | 'prod' | null>(null)
 
 // Store computed properties
 const bookmarks = computed(() => bookmarksApiStore.bookmarks)
@@ -84,6 +85,13 @@ const allTags = computed(() => {
   return Array.from(tagsSet).sort()
 })
 
+// Check if current category has any bookmarks with env field
+const hasEnvField = computed(() => {
+  const found = groupedBookmarks.value.find(([category]) => category === selectedCategory.value)
+  if (!found) return false
+  return found[1].some((bookmark) => bookmark.env)
+})
+
 // Get items for selected category (filtered by search and tags)
 const selectedCategoryItems = computed(() => {
   // Find the selected category items
@@ -91,6 +99,11 @@ const selectedCategoryItems = computed(() => {
   if (!found) return []
 
   let items = found[1]
+
+  // Filter by environment
+  if (selectedEnv.value) {
+    items = items.filter((item) => item.env === selectedEnv.value)
+  }
 
   // Filter by search query
   if (searchQuery.value.trim()) {
@@ -211,6 +224,7 @@ const toggleTag = (tag: string) => {
 const clearFilters = () => {
   searchQuery.value = ''
   selectedTags.value = new Set()
+  selectedEnv.value = null
 }
 
 // Watch for groupedBookmarks changes to initialize selected category only once
@@ -229,6 +243,7 @@ watch(
 // Clear tag filters when category changes
 watch(selectedCategory, (newCategory) => {
   selectedTags.value = new Set()
+  selectedEnv.value = null
 
   // Update URL query parameter
   const currentCategory = route.query.category
@@ -429,10 +444,38 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
                   <button
                     @click="clearFilters"
                     class="clear-filters-icon-button"
-                    :disabled="selectedTags.size === 0 && !searchQuery"
+                    :disabled="selectedTags.size === 0 && !searchQuery && !selectedEnv"
                     title="Clear filters"
                   >
                     <X :size="18" />
+                  </button>
+                </div>
+
+                <!-- Environment Filter -->
+                <div v-if="hasEnvField" class="env-filter">
+                  <button
+                    @click="selectedEnv = null"
+                    :class="['env-button', { active: selectedEnv === null }]"
+                  >
+                    All
+                  </button>
+                  <button
+                    @click="selectedEnv = 'dev'"
+                    :class="['env-button', 'env-dev', { active: selectedEnv === 'dev' }]"
+                  >
+                    Dev
+                  </button>
+                  <button
+                    @click="selectedEnv = 'staging'"
+                    :class="['env-button', 'env-staging', { active: selectedEnv === 'staging' }]"
+                  >
+                    Staging
+                  </button>
+                  <button
+                    @click="selectedEnv = 'prod'"
+                    :class="['env-button', 'env-prod', { active: selectedEnv === 'prod' }]"
+                  >
+                    Prod
                   </button>
                 </div>
 
@@ -462,7 +505,10 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
                   :href="bookmark.url"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="bookmark-card"
+                  :class="[
+                    'bookmark-card',
+                    bookmark.env ? `bookmark-card-${bookmark.env}` : ''
+                  ]"
                 >
                   <div class="bookmark-favicon">
                     <img
@@ -476,7 +522,15 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
                     />
                   </div>
                   <div class="bookmark-content">
-                    <h3 class="bookmark-title">{{ bookmark.title || getDomain(bookmark.url) }}</h3>
+                    <div class="bookmark-header">
+                      <h3 class="bookmark-title">{{ bookmark.title || getDomain(bookmark.url) }}</h3>
+                      <span
+                        v-if="bookmark.env"
+                        :class="['env-badge', `env-badge-${bookmark.env}`]"
+                      >
+                        {{ bookmark.env }}
+                      </span>
+                    </div>
                     <p class="bookmark-url">{{ getDomain(bookmark.url) }}</p>
                     <div v-if="bookmark.tags && bookmark.tags.length > 0" class="bookmark-tags">
                       <span
@@ -698,6 +752,49 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
   cursor: not-allowed;
 }
 
+.env-filter {
+  display: flex;
+  gap: 8px;
+}
+
+.env-button {
+  padding: 8px 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.env-button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.env-button.active {
+  color: white;
+  border-color: transparent;
+}
+
+.env-button.active:not(.env-dev):not(.env-staging):not(.env-prod) {
+  background: var(--btn-primary-bg);
+}
+
+.env-button.env-dev.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.env-button.env-staging.active {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.env-button.env-prod.active {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+}
+
 .tags-filter {
   display: flex;
   flex-direction: column;
@@ -805,6 +902,33 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
   transform: translateY(-2px);
 }
 
+.bookmark-card-dev {
+  border-left: 3px solid #3b82f6;
+}
+
+.bookmark-card-dev:hover {
+  border-left-color: #2563eb;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+.bookmark-card-staging {
+  border-left: 3px solid #f59e0b;
+}
+
+.bookmark-card-staging:hover {
+  border-left-color: #d97706;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+}
+
+.bookmark-card-prod {
+  border-left: 3px solid #22c55e;
+}
+
+.bookmark-card-prod:hover {
+  border-left-color: #16a34a;
+  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.2);
+}
+
 .bookmark-favicon {
   width: 32px;
   height: 32px;
@@ -834,6 +958,12 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
   gap: 4px;
 }
 
+.bookmark-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .bookmark-title {
   margin: 0;
   font-size: 16px;
@@ -845,6 +975,30 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  flex: 1;
+}
+
+.env-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.env-badge-dev {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.env-badge-staging {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.env-badge-prod {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
 }
 
 .bookmark-url {
