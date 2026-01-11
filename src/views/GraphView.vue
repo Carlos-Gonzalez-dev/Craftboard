@@ -132,6 +132,58 @@ const nodeColors = {
   root: extractColor(HEADER_COLORS[1]!.gradient), // Purple
 }
 
+// Compute globally connected nodes (independent of filters)
+// This determines which nodes are "orphans" based on ALL data, not filtered data
+const globallyConnectedNodes = computed<Set<string>>(() => {
+  const connectedIds = new Set<string>()
+
+  // Add folder hierarchy links
+  const addFolderLinks = (parentFolder: CraftFolder) => {
+    if (parentFolder.folders && parentFolder.folders.length > 0) {
+      parentFolder.folders.forEach((subfolder) => {
+        // Skip daily notes folders
+        if (subfolder.id === 'daily_notes' || subfolder.id.startsWith('daily_notes_year_')) {
+          return
+        }
+        connectedIds.add(parentFolder.id)
+        connectedIds.add(subfolder.id)
+        addFolderLinks(subfolder)
+      })
+    }
+  }
+  folders.value.forEach(addFolderLinks)
+
+  // Add document-folder links (exclude daily notes folders)
+  documents.value.forEach((doc) => {
+    if (
+      doc.folderId &&
+      doc.folderId !== 'daily_notes' &&
+      !doc.folderId.startsWith('daily_notes_year_')
+    ) {
+      connectedIds.add(doc.folderId)
+      connectedIds.add(doc.id)
+    }
+  })
+
+  // Add collection-document links
+  collections.value.forEach((collection) => {
+    connectedIds.add(collection.documentId)
+    connectedIds.add(collection.id)
+  })
+
+  // Add tag-document links
+  tagDocuments.value.forEach((docInfo) => {
+    if (docInfo.tags.length > 0) {
+      connectedIds.add(docInfo.documentId)
+      docInfo.tags.forEach((tag) => {
+        connectedIds.add(`tag:${tag}`)
+      })
+    }
+  })
+
+  return connectedIds
+})
+
 // Computed
 const graphNodes = computed<GraphNode[]>(() => {
   const nodes: GraphNode[] = []
@@ -223,70 +275,14 @@ const graphNodes = computed<GraphNode[]>(() => {
   }
 
   // Filter orphan nodes if option is disabled
+  // Use globally connected nodes (independent of current filters)
   if (!showOrphanNodes.value) {
-    const tempLinks: GraphLink[] = []
-    const nodeIds = new Set(nodes.map((n) => n.id))
-
-    const addFolderLinks = (parentFolder: CraftFolder) => {
-      if (parentFolder.folders && parentFolder.folders.length > 0) {
-        parentFolder.folders.forEach((subfolder) => {
-          if (nodeIds.has(parentFolder.id) && nodeIds.has(subfolder.id)) {
-            tempLinks.push({ source: parentFolder.id, target: subfolder.id, type: 'contains' })
-          }
-          addFolderLinks(subfolder)
-        })
-      }
-    }
-    folders.value.forEach(addFolderLinks)
-
-    documents.value.forEach((doc) => {
-      if (!doc.dailyNoteDate && doc.folderId && nodeIds.has(doc.folderId) && nodeIds.has(doc.id)) {
-        tempLinks.push({ source: doc.folderId, target: doc.id, type: 'contains' })
-      }
+    return nodes.filter((node) => {
+      // Always include root node if enabled
+      if (node.id === '__root__') return true
+      // Check if node is connected in the global graph (before filters)
+      return globallyConnectedNodes.value.has(node.id)
     })
-
-    collections.value.forEach((collection) => {
-      if (nodeIds.has(collection.documentId) && nodeIds.has(collection.id)) {
-        tempLinks.push({
-          source: collection.documentId,
-          target: collection.id,
-          type: 'hasCollection',
-        })
-      }
-    })
-
-    // Add tag links for orphan filtering
-    if (showTags.value) {
-      tagDocuments.value.forEach((docInfo) => {
-        docInfo.tags.forEach((tag) => {
-          const tagNodeId = `tag:${tag}`
-          if (nodeIds.has(docInfo.documentId) && nodeIds.has(tagNodeId)) {
-            tempLinks.push({
-              source: docInfo.documentId,
-              target: tagNodeId,
-              type: 'hasTag',
-            })
-          }
-        })
-      })
-    }
-
-    const connectedNodeIds = new Set<string>()
-    tempLinks.forEach((link) => {
-      const sourceId = typeof link.source === 'string' ? link.source : link.source.id
-      const targetId = typeof link.target === 'string' ? link.target : link.target.id
-      if (sourceId !== '__root__' && targetId !== '__root__') {
-        connectedNodeIds.add(sourceId)
-        connectedNodeIds.add(targetId)
-      }
-    })
-
-    // Always include root node if it exists and showRootNode is enabled
-    if (showRootNode.value && nodeIds.has('__root__')) {
-      connectedNodeIds.add('__root__')
-    }
-
-    return nodes.filter((node) => connectedNodeIds.has(node.id))
   }
 
   return nodes
@@ -504,6 +500,13 @@ function renderGraph() {
     '#0f172a'
 
   const svg = d3.select(svgRef.value)
+
+  // Save current zoom transform before clearing
+  let currentTransform: d3.ZoomTransform | null = null
+  if (zoomBehavior) {
+    currentTransform = d3.zoomTransform(svgRef.value)
+  }
+
   svg.selectAll('*').remove()
 
   const nodes: D3Node[] = [...graphNodes.value]
@@ -519,6 +522,15 @@ function renderGraph() {
     })
 
   svg.call(zoomBehavior)
+
+  // Restore previous zoom transform if it existed and was modified
+  if (currentTransform) {
+    const isIdentity =
+      currentTransform.k === 1 && currentTransform.x === 0 && currentTransform.y === 0
+    if (!isIdentity) {
+      svg.call(zoomBehavior.transform, currentTransform)
+    }
+  }
 
   simulation = d3
     .forceSimulation<D3Node, D3Link>(nodes)
