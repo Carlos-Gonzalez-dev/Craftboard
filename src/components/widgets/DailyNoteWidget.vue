@@ -145,52 +145,37 @@ const refresh = async () => {
   await loadDailyNote(true) // Force refresh bypasses cache
 }
 
-// Watch for date changes and reload (watch the formatted string to avoid duplicate triggers)
+// Watch for date changes and reload (only after initial load)
 watch(
   currentDateStr,
   () => {
-    loadDailyNote()
+    if (hasInitiallyLoaded.value) {
+      loadDailyNote()
+    }
   },
   { immediate: false },
 )
 
 // Load saved date from widget data or default to today
 onMounted(async () => {
-  if (hasInitiallyLoaded.value) return
-  hasInitiallyLoaded.value = true
-
+  // Restore saved date if available
   if (props.widget.data?.currentDate) {
     const savedDate = new Date(props.widget.data.currentDate)
     if (!isNaN(savedDate.getTime())) {
-      // Check if saved date is different from current date
-      const currentDateStr = formatDate(currentDate.value)
-      const savedDateStr = formatDate(savedDate)
-
-      if (currentDateStr !== savedDateStr) {
-        currentDate.value = savedDate
-        // Watch will trigger loadDailyNote() when currentDate changes
-      } else {
-        // Same date, load directly (watch won't fire)
-        loadDailyNote()
-      }
-    } else {
-      // If saved date is invalid, load today's note
-      loadDailyNote()
+      currentDate.value = savedDate
     }
-  } else {
-    // No saved date, load today's note
-    loadDailyNote()
   }
+
+  // Load daily note once after setting the date
+  await loadDailyNote()
+  hasInitiallyLoaded.value = true
 })
 
 // Process tags in HTML content
 const processTagsInHtml = (htmlContent: string): string => {
   // Match #tag or #tag/subtag patterns (not inside HTML tags)
   // Tags can contain letters, numbers, hyphens, underscores, and forward slashes
-  return htmlContent.replace(
-    /(#[\w-]+(?:\/[\w-]+)*)/g,
-    '<span class="tag">$1</span>',
-  )
+  return htmlContent.replace(/(#[\w-]+(?:\/[\w-]+)*)/g, '<span class="tag">$1</span>')
 }
 
 // Render markdown to HTML
