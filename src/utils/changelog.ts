@@ -9,6 +9,7 @@ export const changelog: ChangelogEntry[] = [
     changes: [
       'Fix duplicated tags on TagView when notes have multiple tags',
       'Added ability to see done tasks on TasksView',
+      'Improve GraphView behavior when changing filters and the orphaned state',
     ],
   },
   {
