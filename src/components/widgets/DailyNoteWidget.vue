@@ -4,19 +4,8 @@ import { marked } from 'marked'
 import { ChevronLeft, ChevronRight, Link as LinkIcon, RefreshCw } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
-import {
-  getDailyNote,
-  getDailyNoteDocumentId,
-  fetchDocuments,
-  getSpaceId,
-  getCraftLinkPreference,
-  buildCraftAppLinkForDailyNote,
-  buildCraftWebLink,
-  openCraftLink,
-  getCacheExpiryMs,
-  getApiUrl,
-  type CraftDocument,
-} from '../../utils/craftApi'
+import { useDailyNoteApiStore } from '../../stores/dailyNoteApi'
+import { getSpaceId, getCraftLinkPreference, openCraftLink, getApiUrl } from '../../utils/craftApi'
 import ProgressIndicator from '../ProgressIndicator.vue'
 
 // Configure marked for better rendering
@@ -35,24 +24,33 @@ const emit = defineEmits<{
 
 const { isCompactView } = useWidgetView()
 
+const dailyNoteApiStore = useDailyNoteApiStore()
+
 const currentDate = ref<Date>(new Date())
-const markdown = ref<string>('')
-const documentId = ref<string | null>(null)
-const clickableLink = ref<string | null>(null)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const totalApiCalls = ref(0)
 const completedApiCalls = ref(0)
 const hasInitiallyLoaded = ref(false)
 
-// Cache for daily notes to avoid duplicate requests
-interface CachedDailyNote {
-  markdown: string
-  documentId: string | null
-  clickableLink: string | null
-  timestamp: number
-}
-const dailyNoteCache = ref<Map<string, CachedDailyNote>>(new Map())
+// Computed values from store
+const markdown = computed(() => {
+  const dateStr = formatDate(currentDate.value)
+  const note = dailyNoteApiStore.getDailyNote(dateStr)
+  return note?.markdown || ''
+})
+
+const documentId = computed(() => {
+  const dateStr = formatDate(currentDate.value)
+  const note = dailyNoteApiStore.getDailyNote(dateStr)
+  return note?.documentId || null
+})
+
+const clickableLink = computed(() => {
+  const dateStr = formatDate(currentDate.value)
+  const note = dailyNoteApiStore.getDailyNote(dateStr)
+  return note?.clickableLink || null
+})
 
 // Computed date string for watching (prevents duplicate triggers)
 const currentDateStr = computed(() => formatDate(currentDate.value))
@@ -89,112 +87,35 @@ const isToday = computed(() => {
 const loadDailyNote = async (forceRefresh = false) => {
   const dateStr = formatDate(currentDate.value)
 
-  // Check cache first
-  if (!forceRefresh) {
-    const cached = dailyNoteCache.value.get(dateStr)
-    const cacheExpiryMs = getCacheExpiryMs()
-    if (cached && cacheExpiryMs > 0 && Date.now() - cached.timestamp < cacheExpiryMs) {
-      markdown.value = cached.markdown
-      documentId.value = cached.documentId
-      clickableLink.value = cached.clickableLink
-      return
-    }
-  }
-
   isLoading.value = true
   error.value = null
   totalApiCalls.value = 1
   completedApiCalls.value = 0
 
   try {
-    // Make a single request to get both content and document ID
-    const apiUrl = getApiUrl()
-    if (!apiUrl) {
-      throw new Error('Craft API URL not configured')
-    }
+    await dailyNoteApiStore.initializeDailyNote(dateStr, forceRefresh)
 
-    const response = await fetch(`${apiUrl}/blocks?date=${dateStr}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('craft-api-token')}`,
-        'Content-Type': 'application/json',
-      },
-    })
+    // Build clickable link if we have documentId
+    const note = dailyNoteApiStore.getDailyNote(dateStr)
+    if (note && note.documentId && !note.clickableLink) {
+      const spaceId = await getSpaceId()
+      if (spaceId) {
+        note.clickableLink = `https://www.craft.do/s/${spaceId}/${note.documentId}`
+      }
+    }
 
     completedApiCalls.value++
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        // Daily note doesn't exist for this date
-        markdown.value = '*No content for this date*'
-        documentId.value = null
-        clickableLink.value = null
-      } else {
-        throw new Error(`Failed to fetch daily note: ${response.statusText}`)
-      }
-    } else {
-      const data = await response.json()
-
-      // Extract document ID (root block ID)
-      documentId.value = data.id || null
-
-      // Extract markdown from the response
-      const extractMarkdown = (block: any): string[] => {
-        const lines: string[] = []
-        // Include markdown if it's a task or not a page type
-        if (block.markdown && (block.listStyle === 'task' || block.type !== 'page')) {
-          lines.push(block.markdown)
-        }
-        // If it's a task, don't process its content (completed/canceled history)
-        if (block.listStyle === 'task') {
-          return lines
-        }
-        if (block.content && Array.isArray(block.content)) {
-          for (const child of block.content) {
-            lines.push(...extractMarkdown(child))
-          }
-        }
-        return lines
-      }
-
-      const markdownLines = extractMarkdown(data)
-      markdown.value =
-        markdownLines.length > 0 ? markdownLines.join('\n\n') : '*No content for this date*'
-
-      // Construct clickableLink if we have documentId
-      if (documentId.value) {
-        const spaceId = await getSpaceId()
-        if (spaceId) {
-          clickableLink.value = `https://www.craft.do/s/${spaceId}/${documentId.value}`
-        } else {
-          clickableLink.value = null
-        }
-      } else {
-        clickableLink.value = null
-      }
-    }
-
-    // Cache the result
-    dailyNoteCache.value.set(dateStr, {
-      markdown: markdown.value,
-      documentId: documentId.value,
-      clickableLink: clickableLink.value,
-      timestamp: Date.now(),
-    })
 
     // Save current date to widget data
     const widgetData = {
       currentDate: dateStr,
-      documentId: documentId.value,
+      documentId: note?.documentId || null,
     }
     emit('update:data', widgetData)
   } catch (err) {
     console.error('Failed to load daily note:', err)
     error.value = err instanceof Error ? err.message : 'Failed to load daily note'
-    markdown.value = '*Error loading daily note*'
-    documentId.value = null
-    clickableLink.value = null
-    completedApiCalls.value = totalApiCalls.value // Mark all as completed on error
+    completedApiCalls.value = totalApiCalls.value
   } finally {
     isLoading.value = false
   }

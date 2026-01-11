@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
-import { Settings, RefreshCw, Loader, ExternalLink, Library, Filter, Table, Grid3x3 } from 'lucide-vue-next'
+import {
+  Settings,
+  RefreshCw,
+  Loader,
+  ExternalLink,
+  Library,
+  Filter,
+  Table,
+  Grid3x3,
+} from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
+import { useCollectionsApiStore } from '../../stores/collectionsApi'
 import {
-  listCollections,
-  getCollectionSchema,
-  getCollectionItems,
   renderPropertyValue,
   fetchDocuments,
   type Collection,
@@ -29,7 +36,9 @@ const emit = defineEmits<{
   'update:title': [title: string]
 }>()
 
-const collections = ref<Collection[]>([])
+const collectionsApiStore = useCollectionsApiStore()
+
+const collections = computed(() => collectionsApiStore.collections)
 const selectedCollection = ref<Collection | null>(null)
 const schema = ref<CollectionSchema | null>(null)
 const items = ref<CollectionItem[]>([])
@@ -45,80 +54,13 @@ const hasApiConfig = computed(() => !!getApiUrl())
 // Widget view mode
 const { isCompactView } = useWidgetView()
 
-const CACHE_DURATION = 24 * 60 * 60 * 1000 // 1 day in milliseconds
 const lastUpdated = ref<number | null>(null)
-
-interface CachedCollectionData {
-  schema: CollectionSchema
-  items: CollectionItem[]
-  timestamp: number
-  collectionId: string
-}
-
-const getCacheKey = (collectionId: string) => {
-  return `craft-collection-cache-${collectionId}`
-}
-
-const getCachedData = (collectionId: string): CachedCollectionData | null => {
-  try {
-    const cached = localStorage.getItem(getCacheKey(collectionId))
-    if (!cached) return null
-
-    const data: CachedCollectionData = JSON.parse(cached)
-    const now = Date.now()
-
-    // Check if cache is still valid (less than 1 day old)
-    if (now - data.timestamp < CACHE_DURATION) {
-      return data
-    }
-
-    // Cache expired, remove it
-    localStorage.removeItem(getCacheKey(collectionId))
-    return null
-  } catch (e) {
-    console.error('Failed to read cache:', e)
-    return null
-  }
-}
-
-const formatLastUpdated = (timestamp: number): string => {
-  const now = Date.now()
-  const diff = now - timestamp
-
-  const minutes = Math.floor(diff / (60 * 1000))
-  const hours = Math.floor(diff / (60 * 60 * 1000))
-  const days = Math.floor(diff / (24 * 60 * 60 * 1000))
-
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days === 1) return 'Yesterday'
-  return `${days}d ago`
-}
-
-const setCachedData = (
-  collectionId: string,
-  schemaData: CollectionSchema,
-  itemsData: CollectionItem[],
-) => {
-  try {
-    const cacheData: CachedCollectionData = {
-      schema: schemaData,
-      items: itemsData,
-      timestamp: Date.now(),
-      collectionId,
-    }
-    localStorage.setItem(getCacheKey(collectionId), JSON.stringify(cacheData))
-  } catch (e) {
-    console.error('Failed to cache data:', e)
-  }
-}
 
 const loadCollections = async () => {
   try {
     loading.value = true
     error.value = null
-    collections.value = await listCollections()
+    await collectionsApiStore.initializeCollections()
   } catch (e: any) {
     error.value = e.message || 'Failed to load collections'
     console.error('Failed to load collections:', e)
@@ -160,42 +102,20 @@ const loadCollectionData = async (collectionId: string, forceRefresh: boolean = 
   try {
     error.value = null
 
-    // Try to use cached data if not forcing refresh (before setting loading state)
-    if (!forceRefresh) {
-      const cached = getCachedData(collectionId)
-      if (cached) {
-        schema.value = cached.schema
-        items.value = cached.items
-        lastUpdated.value = cached.timestamp
-        return
-      }
-    }
-
     // Only set loading state if we need to fetch from API
     loading.value = true
-    totalApiCalls.value = 2
+    totalApiCalls.value = 1
     completedApiCalls.value = 0
 
-    // Load schema and items in parallel
-    const [schemaData, itemsData] = await Promise.all([
-      getCollectionSchema(collectionId).then((result) => {
-        completedApiCalls.value++
-        return result
-      }),
-      getCollectionItems(collectionId).then((result) => {
-        completedApiCalls.value++
-        return result
-      }),
-    ])
+    const collectionData = await collectionsApiStore.initializeCollection(
+      collectionId,
+      forceRefresh,
+    )
 
-    schema.value = schemaData
-    items.value = itemsData
-
-    // Update last updated timestamp
+    schema.value = collectionData.schema
+    items.value = collectionData.items
     lastUpdated.value = Date.now()
-
-    // Cache the data
-    setCachedData(collectionId, schemaData, itemsData)
+    completedApiCalls.value++
   } catch (e: any) {
     error.value = e.message || 'Failed to load collection data'
     console.error('Failed to load collection data:', e)
@@ -218,11 +138,11 @@ const reconfigure = () => {
 
 const openCollectionInCraft = async () => {
   if (!props.widget.data?.collectionId) return
-  
+
   const blockId = props.widget.data.collectionId
   // For collections, we can use the collection's documentId if available
   const documentId = selectedCollection.value?.documentId
-  
+
   // Try to get clickableLink from the document
   let clickableLink: string | undefined
   if (documentId) {
@@ -237,7 +157,7 @@ const openCollectionInCraft = async () => {
       console.warn('Failed to fetch document metadata for clickableLink:', e)
     }
   }
-  
+
   await openCraftLink(blockId, documentId, clickableLink)
 }
 
@@ -249,7 +169,7 @@ const openItemInCraft = async (itemId: string) => {
 onMounted(async () => {
   // Load view mode preference
   loadViewMode()
-  
+
   if (!hasApiConfig.value) {
     error.value = 'Please configure your API URL in Settings'
     return
@@ -271,8 +191,8 @@ onMounted(async () => {
     } else {
       // Only fetch collections list if we don't have the name stored
       try {
-        const allCollections = await listCollections()
-        const found = allCollections.find((c) => c.id === collectionId)
+        await collectionsApiStore.initializeCollections()
+        const found = collectionsApiStore.collections.find((c: Collection) => c.id === collectionId)
         if (found) {
           selectedCollection.value = found
           // Store the collection name for future loads
@@ -301,36 +221,36 @@ onMounted(async () => {
 // --- Table filter/sort/search state ---
 // Include widget ID to ensure filters are per-widget
 const filterKey = computed(() => {
-  const widgetId = props.widget.id || '';
-  const collectionId = selectedCollection.value?.id || '';
-  return `${widgetId}-${collectionId}`;
-});
-const STORAGE_PREFIX = 'craft-collection-table-';
+  const widgetId = props.widget.id || ''
+  const collectionId = selectedCollection.value?.id || ''
+  return `${widgetId}-${collectionId}`
+})
+const STORAGE_PREFIX = 'craft-collection-table-'
 
-const searchText = ref('');
-const columnFilters = ref<Record<string, string>>({});
-const sortBy = ref('');
-const sortDir = ref<'asc' | 'desc'>('asc');
+const searchText = ref('')
+const columnFilters = ref<Record<string, string>>({})
+const sortBy = ref('')
+const sortDir = ref<'asc' | 'desc'>('asc')
 
 // Load persisted state
 function loadTableState() {
-  if (!filterKey.value) return;
-  const raw = localStorage.getItem(STORAGE_PREFIX + filterKey.value);
-  if (!raw) return;
+  if (!filterKey.value) return
+  const raw = localStorage.getItem(STORAGE_PREFIX + filterKey.value)
+  if (!raw) return
   try {
-    const state = JSON.parse(raw);
-    searchText.value = state.searchText || '';
-    columnFilters.value = state.columnFilters || {};
-    sortBy.value = state.sortBy || '';
-    sortDir.value = state.sortDir || 'asc';
+    const state = JSON.parse(raw)
+    searchText.value = state.searchText || ''
+    columnFilters.value = state.columnFilters || {}
+    sortBy.value = state.sortBy || ''
+    sortDir.value = state.sortDir || 'asc'
   } catch (e) {
-    console.error('Failed to load table state from localStorage:', e);
+    console.error('Failed to load table state from localStorage:', e)
   }
 }
 
 // Save state
 function saveTableState() {
-  if (!filterKey.value) return;
+  if (!filterKey.value) return
   try {
     localStorage.setItem(
       STORAGE_PREFIX + filterKey.value,
@@ -339,214 +259,226 @@ function saveTableState() {
         columnFilters: columnFilters.value,
         sortBy: sortBy.value,
         sortDir: sortDir.value,
-      })
-    );
+      }),
+    )
   } catch (e) {
-    console.error('Failed to save table state to localStorage:', e);
+    console.error('Failed to save table state to localStorage:', e)
   }
 }
 
 // Watch for changes and save to localStorage
 // Use deep watch for columnFilters to catch nested object changes
-watch(searchText, saveTableState);
-watch(columnFilters, saveTableState, { deep: true });
-watch(sortBy, saveTableState);
-watch(sortDir, saveTableState);
+watch(searchText, saveTableState)
+watch(columnFilters, saveTableState, { deep: true })
+watch(sortBy, saveTableState)
+watch(sortDir, saveTableState)
 
 // Load state when filterKey changes (e.g., collection changes)
-watch(filterKey, (newKey, oldKey) => {
-  if (newKey && newKey !== oldKey) {
-    loadTableState();
-  }
-}, { immediate: true });
+watch(
+  filterKey,
+  (newKey, oldKey) => {
+    if (newKey && newKey !== oldKey) {
+      loadTableState()
+    }
+  },
+  { immediate: true },
+)
 
 // --- Filtering and sorting logic ---
-const filterableTypes = ['tag', 'choices', 'relationship', 'select', 'multiselect'];
+const filterableTypes = ['tag', 'choices', 'relationship', 'select', 'multiselect']
 
-const showFilters = ref(false);
-const isFiltering = ref(false);
+const showFilters = ref(false)
+const isFiltering = ref(false)
 
 // View mode: 'table' or 'gallery'
-const viewMode = ref<'table' | 'gallery'>('table');
+const viewMode = ref<'table' | 'gallery'>('table')
 
 // Load view mode from localStorage
-const VIEW_MODE_STORAGE_KEY = `craft-collection-view-mode-${props.widget.id || ''}`;
+const VIEW_MODE_STORAGE_KEY = `craft-collection-view-mode-${props.widget.id || ''}`
 function loadViewMode() {
-  const saved = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+  const saved = localStorage.getItem(VIEW_MODE_STORAGE_KEY)
   if (saved === 'table' || saved === 'gallery') {
-    viewMode.value = saved;
+    viewMode.value = saved
   }
 }
 
 // Save view mode to localStorage
 watch(viewMode, (newMode) => {
-  localStorage.setItem(VIEW_MODE_STORAGE_KEY, newMode);
-});
+  localStorage.setItem(VIEW_MODE_STORAGE_KEY, newMode)
+})
 
 // Load view mode on mount (integrated into existing onMounted)
 
 // Helper function to get first image from item content
 function getItemImage(item: CollectionItem): string | null {
-  if (!item.content || !Array.isArray(item.content)) return null;
-  const imageContent = item.content.find((c: any) => c.type === 'image');
-  return imageContent?.url || null;
+  if (!item.content || !Array.isArray(item.content)) return null
+  const imageContent = item.content.find((c: any) => c.type === 'image')
+  return imageContent?.url || null
 }
 
 const hasActiveFilters = computed(() => {
-  if (searchText.value.trim()) return true;
+  if (searchText.value.trim()) return true
   for (const key in columnFilters.value) {
-    if (columnFilters.value[key] && columnFilters.value[key] !== '__ALL__') return true;
+    if (columnFilters.value[key] && columnFilters.value[key] !== '__ALL__') return true
   }
-  return false;
-});
+  return false
+})
 
 // --- Filterable properties: only those with 'Existing options:' in description ---
 function parseOptionsFromDescription(desc) {
-  if (!desc) return [];
-  const match = desc.match(/Existing options:\s*([^\"]+\"[^\"]+\")+/i);
-  if (!match) return [];
+  if (!desc) return []
+  const match = desc.match(/Existing options:\s*([^\"]+\"[^\"]+\")+/i)
+  if (!match) return []
   // Extract all quoted options
-  return Array.from(desc.matchAll(/"([^"]+)"/g)).map(m => m[1]);
+  return Array.from(desc.matchAll(/"([^"]+)"/g)).map((m) => m[1])
 }
 
 const filterableProps = computed(() =>
-  (schema.value?.properties || []).filter(p => {
-    const type = (p.type || '').toLowerCase();
+  (schema.value?.properties || []).filter((p) => {
+    const type = (p.type || '').toLowerCase()
     // Include boolean fields
     if (type === 'boolean' || type === 'checkbox') {
-      return true;
+      return true
     }
     // Include fields with existing options
     return (
       typeof p.description === 'string' &&
       /existing options:/i.test(p.description) &&
-      (type === 'object' || type === 'string' || type === 'number' || type.includes('select') || type === 'tag' || type === 'choices' || type === 'relationship')
-    );
-  })
-);
+      (type === 'object' ||
+        type === 'string' ||
+        type === 'number' ||
+        type.includes('select') ||
+        type === 'tag' ||
+        type === 'choices' ||
+        type === 'relationship')
+    )
+  }),
+)
 
 const filterOptions = computed(() => {
-  const opts = {};
+  const opts = {}
   for (const prop of filterableProps.value) {
-    const type = (prop.type || '').toLowerCase();
+    const type = (prop.type || '').toLowerCase()
     // For boolean fields, provide true/false options
     if (type === 'boolean' || type === 'checkbox') {
-      opts[prop.key] = ['true', 'false'];
+      opts[prop.key] = ['true', 'false']
     } else {
-      opts[prop.key] = parseOptionsFromDescription(prop.description);
+      opts[prop.key] = parseOptionsFromDescription(prop.description)
     }
   }
-  return opts;
-});
+  return opts
+})
 
 const uniqueOptions = (propKey) => {
-  const values = new Set();
+  const values = new Set()
   for (const item of items.value) {
-    const v = item.properties?.[propKey];
-    if (Array.isArray(v)) v.forEach(val => values.add(val));
-    else if (v != null) values.add(v);
+    const v = item.properties?.[propKey]
+    if (Array.isArray(v)) v.forEach((val) => values.add(val))
+    else if (v != null) values.add(v)
   }
-  return Array.from(values).sort();
-};
+  return Array.from(values).sort()
+}
 
 const filteredItems = computed(() => {
-  let out = items.value;
+  let out = items.value
   // Text search
   if (searchText.value.trim()) {
-    const q = searchText.value.trim().toLowerCase();
-    out = out.filter(item => {
-      if (item.title?.toLowerCase().includes(q)) return true;
-      return (schema.value?.properties || []).some(prop => {
-        const val = item.properties?.[prop.key];
-        if (val == null) return false;
-        if (Array.isArray(val)) return val.some(v => String(v).toLowerCase().includes(q));
-        return String(val).toLowerCase().includes(q);
-      });
-    });
+    const q = searchText.value.trim().toLowerCase()
+    out = out.filter((item) => {
+      if (item.title?.toLowerCase().includes(q)) return true
+      return (schema.value?.properties || []).some((prop) => {
+        const val = item.properties?.[prop.key]
+        if (val == null) return false
+        if (Array.isArray(val)) return val.some((v) => String(v).toLowerCase().includes(q))
+        return String(val).toLowerCase().includes(q)
+      })
+    })
   }
   // Column filters (single select)
   for (const prop of filterableProps.value) {
-    const filterVal = columnFilters.value[prop.key];
+    const filterVal = columnFilters.value[prop.key]
     if (filterVal && filterVal !== '__ALL__') {
-      out = out.filter(item => {
-        const val = item.properties?.[prop.key];
-        const type = (prop.type || '').toLowerCase();
-        
+      out = out.filter((item) => {
+        const val = item.properties?.[prop.key]
+        const type = (prop.type || '').toLowerCase()
+
         // Handle boolean fields
         if (type === 'boolean' || type === 'checkbox') {
-          const boolVal = filterVal === 'true';
-          if (val == null) return false; // null/undefined values don't match
+          const boolVal = filterVal === 'true'
+          if (val == null) return false // null/undefined values don't match
           if (Array.isArray(val)) {
-            return val.some(v => {
+            return val.some((v) => {
               // Handle various boolean representations
-              const vBool = v === true || v === 'true' || v === 1 || String(v).toLowerCase() === 'true';
-              return vBool === boolVal;
-            });
+              const vBool =
+                v === true || v === 'true' || v === 1 || String(v).toLowerCase() === 'true'
+              return vBool === boolVal
+            })
           }
           // Handle various boolean representations
-          const valBool = val === true || val === 'true' || val === 1 || String(val).toLowerCase() === 'true';
-          return valBool === boolVal;
+          const valBool =
+            val === true || val === 'true' || val === 1 || String(val).toLowerCase() === 'true'
+          return valBool === boolVal
         }
-        
+
         // Handle other types
-        if (Array.isArray(val)) return val.includes(filterVal);
-        return val === filterVal;
-      });
+        if (Array.isArray(val)) return val.includes(filterVal)
+        return val === filterVal
+      })
     }
   }
   // Sorting
   if (sortBy.value) {
     out = [...out].sort((a, b) => {
-      let va = sortBy.value === 'title' ? a.title : a.properties?.[sortBy.value];
-      let vb = sortBy.value === 'title' ? b.title : b.properties?.[sortBy.value];
-      if (va == null) va = '';
-      if (vb == null) vb = '';
+      let va = sortBy.value === 'title' ? a.title : a.properties?.[sortBy.value]
+      let vb = sortBy.value === 'title' ? b.title : b.properties?.[sortBy.value]
+      if (va == null) va = ''
+      if (vb == null) vb = ''
       if (typeof va === 'string' && typeof vb === 'string') {
-        return sortDir.value === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+        return sortDir.value === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
       }
       if (typeof va === 'number' && typeof vb === 'number') {
-        return sortDir.value === 'asc' ? va - vb : vb - va;
+        return sortDir.value === 'asc' ? va - vb : vb - va
       }
-      return 0;
-    });
+      return 0
+    })
   }
-  return out;
-});
+  return out
+})
 
 function setSort(col) {
   if (sortBy.value === col) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
   } else {
-    sortBy.value = col;
-    sortDir.value = 'asc';
+    sortBy.value = col
+    sortDir.value = 'asc'
   }
 }
 
 const clearTableFilters = () => {
-  searchText.value = '';
-  columnFilters.value = {};
-  sortBy.value = '';
-  sortDir.value = 'asc';
-};
+  searchText.value = ''
+  columnFilters.value = {}
+  sortBy.value = ''
+  sortDir.value = 'asc'
+}
 
 const applyFilters = () => {
-  isFiltering.value = false;
-  saveTableState();
-};
+  isFiltering.value = false
+  saveTableState()
+}
 
 const cancelFilters = () => {
   // Optionally reset to saved state or keep current values
-  loadTableState();
-  isFiltering.value = false;
-};
+  loadTableState()
+  isFiltering.value = false
+}
 
 const clearAllFilters = () => {
-  searchText.value = '';
-  columnFilters.value = {};
-  sortBy.value = '';
-  sortDir.value = 'asc';
-  saveTableState();
-};
+  searchText.value = ''
+  columnFilters.value = {}
+  sortBy.value = ''
+  sortDir.value = 'asc'
+  saveTableState()
+}
 
 // Helper function to check if a property is a URL field
 const isUrlProperty = (prop: any): boolean => {
@@ -554,12 +486,14 @@ const isUrlProperty = (prop: any): boolean => {
   const key = prop.key?.toLowerCase() || ''
   const title = prop.title?.toLowerCase() || ''
   const description = prop.description?.toLowerCase() || ''
-  
+
   // Check if key, title, or description contains "url"
-  return key === 'url' || 
-         title.includes('url') || 
-         description.includes('url property') ||
-         description.includes('url format')
+  return (
+    key === 'url' ||
+    title.includes('url') ||
+    description.includes('url property') ||
+    description.includes('url format')
+  )
 }
 
 // Helper function to check if a property is an email field
@@ -568,14 +502,16 @@ const isEmailProperty = (prop: any): boolean => {
   const key = prop.key?.toLowerCase() || ''
   const title = prop.title?.toLowerCase() || ''
   const description = prop.description?.toLowerCase() || ''
-  
+
   // Check if key, title, or description contains "email" or "e-mail"
-  return key === 'email' || 
-         key === 'e-mail' ||
-         title.includes('email') || 
-         title.includes('e-mail') ||
-         description.includes('email property') ||
-         description.includes('email format')
+  return (
+    key === 'email' ||
+    key === 'e-mail' ||
+    title.includes('email') ||
+    title.includes('e-mail') ||
+    description.includes('email property') ||
+    description.includes('email format')
+  )
 }
 
 // Helper function to format URL (add protocol if missing)
@@ -586,14 +522,14 @@ const formatUrl = (url: string): string => {
     return trimmed
   }
   return `https://${trimmed}`
-};
+}
 
 // Helper function to check if a string looks like an email
 const isEmail = (value: string): boolean => {
   if (!value || typeof value !== 'string') return false
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   return emailRegex.test(value.trim())
-};
+}
 </script>
 
 <template>
@@ -626,7 +562,9 @@ const isEmail = (value: string): boolean => {
 
       <div v-else class="collections-list">
         <button
-          v-for="collection in [...collections].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))"
+          v-for="collection in [...collections].sort((a, b) =>
+            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+          )"
           :key="collection.id"
           @click="selectCollection(collection)"
           class="collection-option"
@@ -665,7 +603,7 @@ const isEmail = (value: string): boolean => {
       <div v-if="isFiltering && items.length > 0" class="filter-form-view">
         <div class="filter-form">
           <h3 class="filter-form-title">Filter Collection</h3>
-          
+
           <!-- Search -->
           <div class="filter-form-group">
             <label class="filter-form-label">Search</label>
@@ -679,11 +617,7 @@ const isEmail = (value: string): boolean => {
           </div>
 
           <!-- Column Filters -->
-          <div
-            v-for="prop in filterableProps"
-            :key="prop.key"
-            class="filter-form-group"
-          >
+          <div v-for="prop in filterableProps" :key="prop.key" class="filter-form-group">
             <label class="filter-form-label">{{ prop.name }}</label>
             <select
               v-model="columnFilters[prop.key]"
@@ -691,14 +625,15 @@ const isEmail = (value: string): boolean => {
               :aria-label="'Filter by ' + prop.name"
             >
               <option value="__ALL__">All {{ prop.name }}</option>
-              <option
-                v-for="opt in filterOptions[prop.key]"
-                :key="opt"
-                :value="opt"
-              >
-                {{ (prop.type || '').toLowerCase() === 'boolean' || (prop.type || '').toLowerCase() === 'checkbox' 
-                    ? (opt === 'true' ? 'Yes' : 'No') 
-                    : opt }}
+              <option v-for="opt in filterOptions[prop.key]" :key="opt" :value="opt">
+                {{
+                  (prop.type || '').toLowerCase() === 'boolean' ||
+                  (prop.type || '').toLowerCase() === 'checkbox'
+                    ? opt === 'true'
+                      ? 'Yes'
+                      : 'No'
+                    : opt
+                }}
               </option>
             </select>
           </div>
@@ -706,18 +641,10 @@ const isEmail = (value: string): boolean => {
           <!-- Sort -->
           <div class="filter-form-group">
             <label class="filter-form-label">Sort By</label>
-            <select
-              v-model="sortBy"
-              class="filter-form-select"
-              aria-label="Sort by"
-            >
+            <select v-model="sortBy" class="filter-form-select" aria-label="Sort by">
               <option value="">None</option>
               <option value="title">Title</option>
-              <option
-                v-for="prop in schema?.properties"
-                :key="prop.key"
-                :value="prop.key"
-              >
+              <option v-for="prop in schema?.properties" :key="prop.key" :value="prop.key">
                 {{ prop.name }}
               </option>
             </select>
@@ -726,11 +653,7 @@ const isEmail = (value: string): boolean => {
           <!-- Sort Direction -->
           <div v-if="sortBy" class="filter-form-group">
             <label class="filter-form-label">Sort Direction</label>
-            <select
-              v-model="sortDir"
-              class="filter-form-select"
-              aria-label="Sort direction"
-            >
+            <select v-model="sortDir" class="filter-form-select" aria-label="Sort direction">
               <option value="asc">Ascending</option>
               <option value="desc">Descending</option>
             </select>
@@ -738,15 +661,9 @@ const isEmail = (value: string): boolean => {
 
           <!-- Apply Button -->
           <div class="filter-form-actions">
-            <button @click="applyFilters" class="filter-apply-button">
-              Apply Filters
-            </button>
-            <button @click="clearAllFilters" class="filter-clear-button">
-              Clear All
-            </button>
-            <button @click="cancelFilters" class="filter-cancel-button">
-              Cancel
-            </button>
+            <button @click="applyFilters" class="filter-apply-button">Apply Filters</button>
+            <button @click="clearAllFilters" class="filter-clear-button">Clear All</button>
+            <button @click="cancelFilters" class="filter-cancel-button">Cancel</button>
           </div>
         </div>
       </div>
@@ -756,7 +673,15 @@ const isEmail = (value: string): boolean => {
         <table class="collection-table">
           <thead>
             <tr>
-              <th class="title-header" @click="setSort('title')" :class="{ sortable: true, sorted: sortBy === 'title', desc: sortDir === 'desc' && sortBy === 'title' }">
+              <th
+                class="title-header"
+                @click="setSort('title')"
+                :class="{
+                  sortable: true,
+                  sorted: sortBy === 'title',
+                  desc: sortDir === 'desc' && sortBy === 'title',
+                }"
+              >
                 Title
                 <span v-if="sortBy === 'title'">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
               </th>
@@ -764,7 +689,11 @@ const isEmail = (value: string): boolean => {
                 v-for="prop in schema?.properties"
                 :key="prop.key"
                 @click="setSort(prop.key)"
-                :class="{ sortable: true, sorted: sortBy === prop.key, desc: sortDir === 'desc' && sortBy === prop.key }"
+                :class="{
+                  sortable: true,
+                  sorted: sortBy === prop.key,
+                  desc: sortDir === 'desc' && sortBy === prop.key,
+                }"
                 :title="`${prop.description || prop.name}\nType: ${prop.type}`"
               >
                 {{ prop.name }}
@@ -774,7 +703,9 @@ const isEmail = (value: string): boolean => {
           </thead>
           <tbody>
             <tr v-for="item in filteredItems" :key="item.id" class="table-row">
-              <td class="title-cell" :title="item.title" @click="openItemInCraft(item.id)">{{ item.title }}</td>
+              <td class="title-cell" :title="item.title" @click="openItemInCraft(item.id)">
+                {{ item.title }}
+              </td>
               <td
                 v-for="prop in schema?.properties"
                 :key="prop.key"
@@ -792,7 +723,12 @@ const isEmail = (value: string): boolean => {
                     {{ renderPropertyValue(item.properties[prop.key], prop.type) }}
                   </a>
                 </template>
-                <template v-else-if="(isEmailProperty(prop) || isEmail(item.properties?.[prop.key])) && item.properties?.[prop.key]">
+                <template
+                  v-else-if="
+                    (isEmailProperty(prop) || isEmail(item.properties?.[prop.key])) &&
+                    item.properties?.[prop.key]
+                  "
+                >
                   <a
                     :href="`mailto:${item.properties[prop.key]}`"
                     class="property-link"
@@ -834,7 +770,7 @@ const isEmail = (value: string): boolean => {
           </div>
         </div>
       </div>
-      
+
       <!-- Footer with action buttons -->
       <div v-if="!isCompactView" class="widget-footer">
         <button
@@ -846,7 +782,7 @@ const isEmail = (value: string): boolean => {
         >
           <Filter :size="16" />
         </button>
-        
+
         <!-- View Mode Selector -->
         <div v-if="items.length > 0" class="view-mode-selector">
           <button
@@ -866,7 +802,7 @@ const isEmail = (value: string): boolean => {
             <span>Gallery</span>
           </button>
         </div>
-        
+
         <button @click="openCollectionInCraft" class="footer-button" title="Open in Craft">
           <ExternalLink :size="16" />
         </button>
@@ -898,7 +834,6 @@ const isEmail = (value: string): boolean => {
   position: relative;
   padding-bottom: 38px; /* Space for footer buttons */
 }
-
 
 .config-state h3 {
   margin: 0 0 6px 0;
@@ -1166,7 +1101,6 @@ const isEmail = (value: string): boolean => {
   text-decoration: underline;
 }
 
-
 .loading-state,
 .error-state,
 .empty-state {
@@ -1395,7 +1329,6 @@ const isEmail = (value: string): boolean => {
 .collection-table th.desc {
   font-style: italic;
 }
-
 
 .filter-form-view {
   flex: 1;

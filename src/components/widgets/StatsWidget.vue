@@ -12,10 +12,8 @@ import {
 } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
+import { useStatsApiStore } from '../../stores/statsApi'
 import {
-  fetchDocuments,
-  listCollections,
-  fetchFolders,
   getApiUrl,
   type CraftDocument,
   type Collection,
@@ -33,63 +31,19 @@ const emit = defineEmits<{
 
 const { isCompactView } = useWidgetView()
 
+const statsApiStore = useStatsApiStore()
+
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const lastUpdated = ref<number | null>(null)
 const totalApiCalls = ref(0)
 const completedApiCalls = ref(0)
 
-const documents = ref<CraftDocument[]>([])
-const collections = ref<Collection[]>([])
-const folders = ref<CraftFolder[]>([])
+const documents = computed(() => statsApiStore.documents)
+const collections = computed(() => statsApiStore.collections)
+const folders = computed(() => statsApiStore.folders)
 
 const hasApiConfig = computed(() => !!getApiUrl())
-
-const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
-const CACHE_KEY = 'craft-stats-cache'
-
-interface CachedStatsData {
-  documents: CraftDocument[]
-  collections: Collection[]
-  folders: CraftFolder[]
-  timestamp: number
-}
-
-const getCachedData = (): CachedStatsData | null => {
-  try {
-    const cached = localStorage.getItem(CACHE_KEY)
-    if (!cached) return null
-
-    const data: CachedStatsData = JSON.parse(cached)
-    const now = Date.now()
-
-    // Check if cache is still valid (less than 24 hours old)
-    if (now - data.timestamp < CACHE_DURATION) {
-      return data
-    }
-
-    // Cache expired, remove it
-    localStorage.removeItem(CACHE_KEY)
-    return null
-  } catch (e) {
-    console.error('Failed to read cache:', e)
-    return null
-  }
-}
-
-const setCachedData = (docs: CraftDocument[], cols: Collection[], folds: CraftFolder[]) => {
-  try {
-    const cacheData: CachedStatsData = {
-      documents: docs,
-      collections: cols,
-      folders: folds,
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
-  } catch (e) {
-    console.error('Failed to cache data:', e)
-  }
-}
 
 // Calculate stats
 const totalDocuments = computed(() => {
@@ -238,74 +192,25 @@ const loadStats = async (forceRefresh: boolean = false) => {
     return
   }
 
-  // Try to use cached data if not forcing refresh
-  if (!forceRefresh) {
-    const cached = getCachedData()
-    if (cached) {
-      documents.value = cached.documents
-      collections.value = cached.collections
-      folders.value = cached.folders
-      lastUpdated.value = cached.timestamp
-      isLoading.value = false
-      return
-    }
-  }
-
   isLoading.value = true
   error.value = null
-  totalApiCalls.value = 4 // 4 API calls: all docs, daily notes, collections, folders
+  totalApiCalls.value = 1
   completedApiCalls.value = 0
 
   try {
-
-    // Fetch all data in parallel
-    // Fetch regular documents (all locations except daily_notes) and daily notes separately
-    const [allDocsResult, dailyNotesResult, collectionsResult, foldersResult] = await Promise.all([
-      fetchDocuments({ fetchMetadata: true }).then((result) => {
-        completedApiCalls.value++
-        return result
-      }), // Fetch all documents
-      fetchDocuments({ location: 'daily_notes', fetchMetadata: true }).then((result) => {
-        completedApiCalls.value++
-        return result
-      }), // Fetch daily notes separately
-      listCollections().then((result) => {
-        completedApiCalls.value++
-        return result
-      }),
-      fetchFolders().then((result) => {
-        completedApiCalls.value++
-        return result
-      }),
-    ])
-
-    // Get daily note IDs to filter them out from all documents
-    const dailyNoteIds = new Set((dailyNotesResult.items || []).map((dn) => dn.id))
-
-    // Filter out daily notes from all documents (they'll be added separately with proper dailyNoteDate)
-    const regularDocs = (allDocsResult.items || []).filter((doc) => !dailyNoteIds.has(doc.id))
-    const dailyNotes = dailyNotesResult.items || []
-
-    // Combine regular documents and daily notes
-    documents.value = [...regularDocs, ...dailyNotes]
-
-    collections.value = collectionsResult || []
-    folders.value = foldersResult.items || []
+    await statsApiStore.initializeStats(forceRefresh)
+    completedApiCalls.value++
     lastUpdated.value = Date.now()
 
-    // Cache the data
-    setCachedData(documents.value, collections.value, folders.value)
-
-    // Save to widget data
     emit('update:data', {
-      lastUpdated: lastUpdated.value,
-      documentCount: documents.value.length,
-      collectionCount: collections.value.length,
-      folderCount: folders.value.length,
+      totalDocuments: totalDocuments.value,
+      totalDailyNotes: totalDailyNotes.value,
+      totalCollections: totalCollections.value,
+      totalFolders: totalFolders.value,
     })
-  } catch (err) {
-    console.error('Failed to load stats:', err)
-    error.value = err instanceof Error ? err.message : 'Failed to load statistics'
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to load statistics'
+    completedApiCalls.value = totalApiCalls.value
   } finally {
     isLoading.value = false
   }

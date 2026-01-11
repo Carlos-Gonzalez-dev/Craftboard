@@ -3,8 +3,9 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, Loader } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
-import { getApiUrl, getCollectionItems } from '../../utils/craftApi'
+import { getApiUrl } from '../../utils/craftApi'
 import { getFaviconUrl, getDomain } from '../../utils/favicon'
+import { useBookmarksApiStore } from '../../stores/bookmarksApi'
 import ProgressIndicator from '../ProgressIndicator.vue'
 
 const props = defineProps<{
@@ -18,23 +19,21 @@ const emit = defineEmits<{
 
 const router = useRouter()
 
+const bookmarksApiStore = useBookmarksApiStore()
+
 // API Configuration
 const apiBaseUrl = ref('')
 const bookmarksCollectionId = ref<string | null>(null)
 
-// Cache keys
-const CACHE_PREFIX = 'bookmarks-cache-'
-const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
-
 // State
 const isConfiguring = ref(!props.widget.data?.bookmarkId)
-const bookmarks = ref<any[]>([])
+const bookmarks = computed(() => bookmarksApiStore.bookmarks)
 const selectedBookmark = ref<any | null>(null)
 const searchQuery = ref('')
-const isLoading = ref(false)
+const isLoading = computed(() => bookmarksApiStore.isLoading)
 const error = ref<string | null>(null)
-const totalApiCalls = ref(0)
-const completedApiCalls = ref(0)
+const totalApiCalls = computed(() => bookmarksApiStore.totalApiCalls)
+const completedApiCalls = computed(() => bookmarksApiStore.completedApiCalls)
 
 interface BookmarkItem {
   id: string
@@ -59,109 +58,19 @@ const discoverCollection = async () => {
   bookmarksCollectionId.value = bookmarksId
 }
 
-const getCacheKey = () => {
-  if (!bookmarksCollectionId.value) return null
-  return `${CACHE_PREFIX}${bookmarksCollectionId.value}`
-}
-
-const getCachedData = () => {
-  const cacheKey = getCacheKey()
-  if (!cacheKey) return null
-
-  try {
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { data, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-
-    if (now - timestamp < CACHE_EXPIRY_MS) {
-      return data
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch (error) {
-    console.error('Error reading cache:', error)
-    return null
-  }
-}
-
 const fetchBookmarks = async () => {
   if (!apiBaseUrl.value || !bookmarksCollectionId.value) {
-    isLoading.value = false
     return
   }
 
-  isLoading.value = true
   error.value = null
-  totalApiCalls.value = 1
-  completedApiCalls.value = 0
-
-  // Check cache first
-  const cached = getCachedData()
-  if (cached) {
-    bookmarks.value = cached
-    isLoading.value = false
-    loadSelectedBookmark()
-    return
-  }
 
   try {
-    const items = await getCollectionItems(bookmarksCollectionId.value)
-    completedApiCalls.value++
-
-    const validItems: BookmarkItem[] = items
-      .map((item: any) => {
-        const properties = item.properties || {}
-        let title = item.title || ''
-        if (title.trim().toLowerCase() === 'untitled') {
-          title = ''
-        }
-        const url = properties.URL || properties.url || properties['URL'] || properties['url'] || ''
-        const category =
-          properties.Category ||
-          properties.category ||
-          properties['Category'] ||
-          properties['category'] ||
-          ''
-        const tags =
-          properties.tags || properties.Tags || properties['tags'] || properties['Tags'] || []
-
-        if (url && category) {
-          return {
-            id: item.id,
-            title: String(title),
-            url: String(url),
-            category: String(category),
-            tags: Array.isArray(tags) ? tags.map((t: any) => String(t)) : [],
-          }
-        }
-        return null
-      })
-      .filter((item: BookmarkItem | null): item is BookmarkItem => item !== null)
-
-    bookmarks.value = validItems
-
-    // Cache items
-    const cacheKey = getCacheKey()
-    if (cacheKey) {
-      localStorage.setItem(
-        cacheKey,
-        JSON.stringify({
-          data: validItems,
-          timestamp: Date.now(),
-        }),
-      )
-    }
-
+    await bookmarksApiStore.initializeBookmarks(bookmarksCollectionId.value, false)
     loadSelectedBookmark()
   } catch (err) {
     console.error('Error fetching bookmarks:', err)
     error.value = 'Failed to fetch bookmarks'
-    completedApiCalls.value++
-  } finally {
-    isLoading.value = false
   }
 }
 
@@ -205,7 +114,7 @@ const navigateToCategory = (category: string, event: Event) => {
   event.stopPropagation()
   router.push({
     path: '/bookmarks',
-    query: { category }
+    query: { category },
   })
 }
 

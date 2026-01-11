@@ -3,10 +3,10 @@ import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { Settings, RefreshCw, Loader, Move, Maximize2 } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
+import { useGraphApiStore } from '../../stores/graphApi'
 import {
   getApiUrl,
   fetchDocuments,
-  fetchFolders,
   listCollections,
   openCraftLink,
   buildCraftAppLink,
@@ -31,6 +31,8 @@ const emit = defineEmits<{
 
 const { isCompactView } = useWidgetView()
 
+const graphApiStore = useGraphApiStore()
+
 // Check if d3 is available
 let d3Available = true
 try {
@@ -43,44 +45,16 @@ try {
   console.warn('D3.js not available. Graph visualization will not work.')
 }
 
-// Cache keys (independent from GraphView)
-const FOLDERS_CACHE_KEY = 'graph-widget-folders'
+// Cache keys for folder-specific data (documents/subfolders/collections within a folder)
 const FOLDER_DATA_CACHE_PREFIX = 'graph-widget-folder-'
+const FOLDERS_CACHE_KEY = 'graph-widget-folders'
 
-// Cache helpers for folders list
-function getCachedFolders(): CraftFolder[] | null {
-  try {
-    const cached = localStorage.getItem(FOLDERS_CACHE_KEY)
-    if (!cached) return null
+// Get data from store
+const documents = computed(() => graphApiStore.documents)
+const folders = computed(() => graphApiStore.folders)
+const collections = computed(() => graphApiStore.collections)
 
-    const { folders, timestamp } = JSON.parse(cached)
-    const cacheExpiryMs = getCacheExpiryMs()
-    if (cacheExpiryMs === 0) return null
-
-    const cacheAge = Date.now() - timestamp
-    if (cacheAge > cacheExpiryMs) {
-      localStorage.removeItem(FOLDERS_CACHE_KEY)
-      return null
-    }
-
-    return folders
-  } catch {
-    return null
-  }
-}
-
-function setCachedFolders(folders: CraftFolder[]) {
-  try {
-    localStorage.setItem(
-      FOLDERS_CACHE_KEY,
-      JSON.stringify({ folders, timestamp: Date.now() })
-    )
-  } catch {
-    // Ignore cache errors
-  }
-}
-
-// Cache helpers for folder data (documents, subfolders, collections)
+// Cache helpers for folder data (documents, subfolders, collections) - widget-specific cache
 function getCachedFolderData(folderId: string) {
   try {
     const cached = localStorage.getItem(FOLDER_DATA_CACHE_PREFIX + folderId)
@@ -102,15 +76,18 @@ function getCachedFolderData(folderId: string) {
   }
 }
 
-function setCachedFolderData(folderId: string, data: {
-  documents: CraftDocument[]
-  subfolders: CraftFolder[]
-  collections: Array<{ id: string; name: string; documentId: string }>
-}) {
+function setCachedFolderData(
+  folderId: string,
+  data: {
+    documents: CraftDocument[]
+    subfolders: CraftFolder[]
+    collections: Array<{ id: string; name: string; documentId: string }>
+  },
+) {
   try {
     localStorage.setItem(
       FOLDER_DATA_CACHE_PREFIX + folderId,
-      JSON.stringify({ data, timestamp: Date.now() })
+      JSON.stringify({ data, timestamp: Date.now() }),
     )
   } catch {
     // Ignore cache errors
@@ -128,7 +105,6 @@ function clearCache() {
 }
 
 // State
-const folders = ref<CraftFolder[]>([]) // All folders for selection
 const selectedFolderData = ref<{
   documents: CraftDocument[]
   subfolders: CraftFolder[]
@@ -223,21 +199,19 @@ const graphNodes = computed<GraphNode[]>(() => {
   selectedFolderData.value.documents
     .filter((doc) => !doc.dailyNoteDate)
     .forEach((doc) => {
-    if (!nodeIds.has(doc.id)) {
-      nodes.push({
-        id: doc.id,
-        type: 'document',
-        label: doc.title,
-        data: doc,
-      })
-      nodeIds.add(doc.id)
-    }
-  })
+      if (!nodeIds.has(doc.id)) {
+        nodes.push({
+          id: doc.id,
+          type: 'document',
+          label: doc.title,
+          data: doc,
+        })
+        nodeIds.add(doc.id)
+      }
+    })
 
   // Add collections from selectedFolderData
-  const documentIdsInGraph = new Set(
-    nodes.filter((n) => n.type === 'document').map((n) => n.id),
-  )
+  const documentIdsInGraph = new Set(nodes.filter((n) => n.type === 'document').map((n) => n.id))
 
   selectedFolderData.value.collections.forEach((collection) => {
     if (documentIdsInGraph.has(collection.documentId) && !nodeIds.has(collection.id)) {
@@ -292,7 +266,11 @@ const graphLinks = computed<GraphLink[]>(() => {
   graphNodes.value.forEach((node) => {
     if (node.type === 'collection') {
       const collection = node.data as { id: string; name: string; documentId: string }
-      if (collection.documentId && nodeIds.has(collection.documentId) && nodeIds.has(collection.id)) {
+      if (
+        collection.documentId &&
+        nodeIds.has(collection.documentId) &&
+        nodeIds.has(collection.id)
+      ) {
         links.push({
           source: collection.documentId,
           target: collection.id,
@@ -599,7 +577,7 @@ function fitAll() {
 const allFoldersList = computed(() => {
   const flattenFolders = (folderList: CraftFolder[]): Array<{ id: string; name: string }> => {
     const result: Array<{ id: string; name: string }> = []
-    
+
     const traverse = (folders: CraftFolder[]) => {
       folders.forEach((folder) => {
         result.push({ id: folder.id, name: folder.name })
@@ -608,11 +586,11 @@ const allFoldersList = computed(() => {
         }
       })
     }
-    
+
     traverse(folderList)
     return result.sort((a, b) => a.name.localeCompare(b.name))
   }
-  
+
   return flattenFolders(folders.value)
 })
 
@@ -624,10 +602,10 @@ const selectRoot = async (folder: { id: string; name: string }) => {
   })
   emit('update:title', folder.name)
   isConfiguring.value = false
-  
+
   // Load folder data after selection
   await loadFolderData(folder.id)
-  
+
   // Force render after a short delay to ensure DOM is ready
   await nextTick()
   setTimeout(() => {
@@ -664,23 +642,12 @@ const loadFolders = async (forceRefresh = false) => {
     return
   }
 
-  // Check cache first if not forcing refresh
-  if (!forceRefresh) {
-    const cached = getCachedFolders()
-    if (cached) {
-      folders.value = cached
-      return
-    }
-  }
-
   isLoading.value = true
   totalApiCalls.value = 1
   completedApiCalls.value = 0
   try {
-    const foldersResult = await fetchFolders()
+    await graphApiStore.initializeGraph(forceRefresh)
     completedApiCalls.value++
-    folders.value = foldersResult.items || []
-    setCachedFolders(folders.value)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to fetch folders'
     console.error('Error fetching folders:', e)
@@ -696,7 +663,6 @@ const loadFolderData = async (folderId: string, forceRefresh = false) => {
     error.value = 'Please configure your API URL in Settings'
     return
   }
-
   // Check cache first if not forcing refresh
   if (!forceRefresh) {
     const cached = getCachedFolderData(folderId)
@@ -760,12 +726,10 @@ const loadFolderData = async (folderId: string, forceRefresh = false) => {
     }
 
     const location = specialLocations[folderId]
-    
+
     // Fetch documents for this folder
     const documentsResult = await fetchDocuments(
-      location
-        ? { location, fetchMetadata: true }
-        : { folderId: folderId, fetchMetadata: true },
+      location ? { location, fetchMetadata: true } : { folderId: folderId, fetchMetadata: true },
     )
     completedApiCalls.value++
 
@@ -804,14 +768,14 @@ const loadFolderData = async (folderId: string, forceRefresh = false) => {
     if (!location && targetFolder.folders && targetFolder.folders.length > 0) {
       await fetchSubfolderDocuments(targetFolder)
     }
-    
+
     // Use the nested structure from the API
     const allSubfolders = targetFolder.folders || []
 
     // Fetch collections for documents in this folder tree
     const allCollections: Array<{ id: string; name: string; documentId: string }> = []
     const documentIds = new Set(allDocuments.map((d) => d.id))
-    
+
     if (documentIds.size > 0) {
       try {
         const collectionsList = await listCollections()
@@ -844,7 +808,7 @@ const loadFolderData = async (folderId: string, forceRefresh = false) => {
     // Wait for reactive updates and DOM
     await nextTick()
     await nextTick() // Double nextTick to ensure computed properties have updated
-    
+
     // Render graph after ensuring DOM is ready
     if (d3Available && graphNodes.value.length > 0) {
       // Use setTimeout to ensure SVG element is fully rendered
@@ -1212,4 +1176,3 @@ onMounted(async () => {
   font-size: 13px;
 }
 </style>
-

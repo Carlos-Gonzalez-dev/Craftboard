@@ -12,11 +12,11 @@ import {
 } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
+import { useApiCache } from '../../composables/useApiCache'
 import {
   fetchTasks,
   searchDocuments,
   fetchDocuments,
-  getCacheExpiryMs,
   getCraftLinkPreference,
   openCraftLink,
   type CraftTask,
@@ -35,6 +35,8 @@ const emit = defineEmits<{
 
 const { isCompactView } = useWidgetView()
 
+const cache = useApiCache('document-tasks-cache-')
+
 // Configuration
 const isConfiguring = ref(!props.widget.data?.documentId)
 const searchQuery = ref('')
@@ -50,9 +52,6 @@ const isLoading = ref(false)
 const dailyNotes = ref<Map<string, CraftDocument>>(new Map())
 const totalApiCalls = ref(0)
 const completedApiCalls = ref(0)
-
-// Cache keys
-const CACHE_PREFIX = 'tasks-cache-'
 
 // Debounce timer for search
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -105,41 +104,6 @@ const selectDocument = async (docId: string, title: string) => {
   await loadTasks(true)
 }
 
-// Cache helpers
-const getCachedData = (): CraftTask[] | null => {
-  if (!documentId.value) return null
-  const cacheKey = `${CACHE_PREFIX}document-${documentId.value}`
-  const cached = localStorage.getItem(cacheKey)
-  if (!cached) return null
-
-  try {
-    const { data, timestamp } = JSON.parse(cached)
-    const cacheExpiryMs = getCacheExpiryMs()
-    if (cacheExpiryMs === 0) return null // Caching disabled
-
-    const cacheAge = Date.now() - timestamp
-    if (cacheAge > cacheExpiryMs) {
-      localStorage.removeItem(cacheKey)
-      return null
-    }
-    return data
-  } catch {
-    return null
-  }
-}
-
-const setCachedData = (data: CraftTask[]) => {
-  if (!documentId.value) return
-  const cacheKey = `${CACHE_PREFIX}document-${documentId.value}`
-  localStorage.setItem(
-    cacheKey,
-    JSON.stringify({
-      data,
-      timestamp: Date.now(),
-    }),
-  )
-}
-
 // Load tasks for the document
 const loadTasks = async (forceRefresh = false) => {
   if (!documentId.value) {
@@ -149,16 +113,16 @@ const loadTasks = async (forceRefresh = false) => {
 
   error.value = null
 
-  // Try cache first if not forcing refresh (before setting loading state)
+  // Check cache first
   if (!forceRefresh) {
-    const cached = getCachedData()
+    const cacheKey = `document-${documentId.value}`
+    const cached = cache.getCachedData<CraftTask[]>(cacheKey)
     if (cached) {
       tasks.value = cached
       return
     }
   }
 
-  // Only set loading state if we need to fetch from API
   isLoading.value = true
   totalApiCalls.value = 1
   completedApiCalls.value = 0
@@ -169,11 +133,14 @@ const loadTasks = async (forceRefresh = false) => {
     completedApiCalls.value++
 
     tasks.value = result.items
-    setCachedData(result.items)
+
+    // Cache the result
+    const cacheKey = `document-${documentId.value}`
+    cache.setCachedData(cacheKey, result.items)
   } catch (err) {
     console.error('Error loading tasks:', err)
     error.value = err instanceof Error ? err.message : 'Failed to load tasks'
-    completedApiCalls.value = totalApiCalls.value // Mark all as completed on error
+    completedApiCalls.value = totalApiCalls.value
   } finally {
     isLoading.value = false
   }

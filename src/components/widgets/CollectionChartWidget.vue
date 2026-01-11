@@ -3,7 +3,8 @@ import { ref, onMounted, computed } from 'vue'
 import { RefreshCw, Loader, Library, TrendingUp, BarChart3 } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
-import { listCollections, getApiUrl, getCacheExpiryMs, type Collection } from '../../utils/craftApi'
+import { useCollectionsApiStore } from '../../stores/collectionsApi'
+import { getApiUrl, type Collection } from '../../utils/craftApi'
 import ProgressIndicator from '../ProgressIndicator.vue'
 
 const props = defineProps<{
@@ -16,61 +17,17 @@ const emit = defineEmits<{
 
 const { isCompactView } = useWidgetView()
 
+const collectionsApiStore = useCollectionsApiStore()
+
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const lastUpdated = ref<number | null>(null)
 const totalApiCalls = ref(0)
 const completedApiCalls = ref(0)
 
-const collections = ref<Collection[]>([])
+const collections = computed(() => collectionsApiStore.data)
 
 const hasApiConfig = computed(() => !!getApiUrl())
-
-// Cache key for collections metadata (just what we need: id, name, itemCount)
-const CACHE_KEY = 'collection-chart-cache'
-
-interface CachedCollectionData {
-  collections: Collection[]
-  timestamp: number
-}
-
-// Get cached collections
-const getCachedCollections = (): Collection[] | null => {
-  try {
-    const cached = localStorage.getItem(CACHE_KEY)
-    if (!cached) return null
-
-    const data: CachedCollectionData = JSON.parse(cached)
-    const now = Date.now()
-    const cacheExpiryMs = getCacheExpiryMs()
-
-    if (cacheExpiryMs === 0) return null // Caching disabled
-
-    if (now - data.timestamp < cacheExpiryMs && data.collections) {
-      return data.collections
-    }
-
-    // Cache expired, remove it
-    localStorage.removeItem(CACHE_KEY)
-    return null
-  } catch (e) {
-    console.error('Failed to read cache:', e)
-    return null
-  }
-}
-
-// Cache collections metadata
-const setCachedCollections = (cols: Collection[]) => {
-  try {
-    const cacheData: CachedCollectionData = {
-      collections: cols,
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
-  } catch (e) {
-    console.error('Failed to cache collections:', e)
-  }
-}
 
 // Calculate stats
 const totalCollections = computed(() => collections.value.length)
@@ -137,11 +94,31 @@ const collectionsChartData = computed(() => {
   if (total === 0) return { segments: [], total: 0 }
 
   const segments = [
-    { label: 'Small (0-10)', value: collectionsBySize.value.find((d) => d.label === '0-10')?.count || 0, color: '#6366f1' },
-    { label: 'Medium (11-50)', value: collectionsBySize.value.find((d) => d.label === '11-50')?.count || 0, color: '#a855f7' },
-    { label: 'Large (51-100)', value: collectionsBySize.value.find((d) => d.label === '51-100')?.count || 0, color: '#22c55e' },
-    { label: 'XL (101-500)', value: collectionsBySize.value.find((d) => d.label === '101-500')?.count || 0, color: '#f97316' },
-    { label: 'XXL (500+)', value: collectionsBySize.value.find((d) => d.label === '500+')?.count || 0, color: '#ef4444' },
+    {
+      label: 'Small (0-10)',
+      value: collectionsBySize.value.find((d) => d.label === '0-10')?.count || 0,
+      color: '#6366f1',
+    },
+    {
+      label: 'Medium (11-50)',
+      value: collectionsBySize.value.find((d) => d.label === '11-50')?.count || 0,
+      color: '#a855f7',
+    },
+    {
+      label: 'Large (51-100)',
+      value: collectionsBySize.value.find((d) => d.label === '51-100')?.count || 0,
+      color: '#22c55e',
+    },
+    {
+      label: 'XL (101-500)',
+      value: collectionsBySize.value.find((d) => d.label === '101-500')?.count || 0,
+      color: '#f97316',
+    },
+    {
+      label: 'XXL (500+)',
+      value: collectionsBySize.value.find((d) => d.label === '500+')?.count || 0,
+      color: '#ef4444',
+    },
   ].filter((s) => s.value > 0)
 
   return { segments, total }
@@ -169,20 +146,8 @@ const loadCollections = async (forceRefresh = false) => {
   completedApiCalls.value = 0
 
   try {
-    // Load collections - check cache first
-    if (!forceRefresh) {
-      const cached = getCachedCollections()
-      if (cached) {
-        collections.value = cached
-        isLoading.value = false
-        return
-      }
-    }
-    
-    const cols = await listCollections()
+    await collectionsApiStore.initializeCollections(forceRefresh)
     completedApiCalls.value++
-    collections.value = cols
-    setCachedCollections(cols)
 
     lastUpdated.value = Date.now()
 
@@ -560,4 +525,3 @@ onMounted(() => {
   }
 }
 </style>
-

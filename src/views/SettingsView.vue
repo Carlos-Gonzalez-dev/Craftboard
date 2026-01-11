@@ -4,13 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { Trash2, Settings, Database, Link, Plus, X, Info } from 'lucide-vue-next'
 import ViewTabs from '../components/ViewTabs.vue'
 import { Check, RefreshCw } from 'lucide-vue-next'
-import {
-  getCacheExpiryMinutes,
-  setCacheExpiryMinutes,
-  listCollections,
-  type Collection,
-} from '../utils/craftApi'
+import { useCollectionsApiStore } from '../stores/collectionsApi'
+import { getCacheExpiryMinutes, setCacheExpiryMinutes, type Collection } from '../utils/craftApi'
 import { changelog } from '../utils/changelog'
+
+const collectionsApiStore = useCollectionsApiStore()
 
 const apiUrl = ref('')
 const apiKey = ref('')
@@ -108,7 +106,8 @@ const autodiscoverCollections = async () => {
   collectionsError.value = null
 
   try {
-    const allCollections = await listCollections()
+    await collectionsApiStore.initializeCollections(true)
+    const allCollections = collectionsApiStore.collections
     let discoveredCount = 0
     let updatedCount = 0
 

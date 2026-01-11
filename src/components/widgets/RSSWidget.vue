@@ -2,9 +2,10 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { Settings, ExternalLink, Search, Loader, RefreshCw, Rss } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
-import { getApiUrl, getCollectionItems, getCacheExpiryMs } from '../../utils/craftApi'
-import { fetchRSSFeed, type RSSFeed } from '../../utils/rssParser'
+import { getApiUrl } from '../../utils/craftApi'
+import { type RSSFeed } from '../../utils/rssParser'
 import { getFaviconUrl, getDomain } from '../../utils/favicon'
+import { useRSSApiStore } from '../../stores/rssApi'
 import ProgressIndicator from '../ProgressIndicator.vue'
 
 const props = defineProps<{
@@ -16,32 +17,24 @@ const emit = defineEmits<{
   'update:title': [title: string]
 }>()
 
+const rssApiStore = useRSSApiStore()
+
 // API Configuration
 const apiBaseUrl = ref('')
 const rssCollectionId = ref<string | null>(null)
 
-// Cache keys
-const CACHE_PREFIX = 'rss-cache-'
-
 // State
 const isConfiguring = ref(!props.widget.data?.rssItemId)
-const rssItems = ref<any[]>([])
+const rssItems = computed(() => rssApiStore.rssItems)
+const rssFeeds = computed(() => rssApiStore.rssFeeds)
 const selectedRSSItem = ref<any | null>(null)
 const rssFeed = ref<RSSFeed | null>(null)
 const searchQuery = ref('')
-const isLoading = ref(false)
+const isLoading = computed(() => rssApiStore.isLoading)
 const isLoadingFeed = ref(false)
 const error = ref<string | null>(null)
-const totalApiCalls = ref(0)
-const completedApiCalls = ref(0)
-
-interface RSSCollectionItem {
-  id: string
-  title: string
-  url: string
-  category: string
-  tags?: string[]
-}
+const totalApiCalls = computed(() => rssApiStore.totalApiCalls)
+const completedApiCalls = computed(() => rssApiStore.completedApiCalls)
 
 const discoverCollection = async () => {
   if (!apiBaseUrl.value) return
@@ -58,133 +51,19 @@ const discoverCollection = async () => {
   rssCollectionId.value = rssId
 }
 
-const getCacheKey = () => {
-  if (!rssCollectionId.value) return null
-  return `${CACHE_PREFIX}${rssCollectionId.value}`
-}
-
-const getCachedData = () => {
-  const cacheKey = getCacheKey()
-  if (!cacheKey) return null
-
-  try {
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    // RSSView stores cache as { data: { items, feeds }, timestamp }
-    // RSSWidget also needs to read this format for compatibility
-    const parsed = JSON.parse(cached)
-    let data: { items: any[]; feeds: Record<string, RSSFeed> } | null = null
-    let timestamp: number | null = null
-
-    // Handle both formats for backward compatibility
-    if (parsed.data) {
-      // RSSView format: { data: { items, feeds }, timestamp }
-      data = parsed.data
-      timestamp = parsed.timestamp
-    } else if (parsed.items !== undefined) {
-      // RSSWidget old format: { items, feeds, timestamp }
-      data = { items: parsed.items, feeds: parsed.feeds || {} }
-      timestamp = parsed.timestamp
-    } else {
-      return null
-    }
-
-    const now = Date.now()
-    const cacheExpiryMs = getCacheExpiryMs()
-    if (cacheExpiryMs === 0) return null // Caching disabled
-    
-    if (timestamp && now - timestamp < cacheExpiryMs) {
-      return data
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch (error) {
-    console.error('Error reading cache:', error)
-    return null
-  }
-}
-
 const fetchRSSItems = async () => {
   if (!apiBaseUrl.value || !rssCollectionId.value) {
-    isLoading.value = false
     return
   }
 
-  isLoading.value = true
   error.value = null
-  totalApiCalls.value = 1
-  completedApiCalls.value = 0
-
-  // Check cache first
-  const cached = getCachedData()
-  if (cached) {
-    rssItems.value = cached.items || []
-    isLoading.value = false
-    loadSelectedRSSItem()
-    return
-  }
 
   try {
-    const items = await getCollectionItems(rssCollectionId.value)
-    completedApiCalls.value++
-
-    const validItems: RSSCollectionItem[] = items
-      .map((item: any) => {
-        const properties = item.properties || {}
-        let title = item.title || ''
-        if (title.trim().toLowerCase() === 'untitled') {
-          title = ''
-        }
-        const url = properties.URL || properties.url || properties['URL'] || properties['url'] || ''
-        const category =
-          properties.Category ||
-          properties.category ||
-          properties['Category'] ||
-          properties['category'] ||
-          ''
-        const tags =
-          properties.tags || properties.Tags || properties['tags'] || properties['Tags'] || []
-
-        if (url && category) {
-          return {
-            id: item.id,
-            title: String(title),
-            url: String(url),
-            category: String(category),
-            tags: Array.isArray(tags) ? tags.map((t: any) => String(t)) : [],
-          }
-        }
-        return null
-      })
-      .filter((item: RSSCollectionItem | null): item is RSSCollectionItem => item !== null)
-
-    rssItems.value = validItems
-
-    // Cache items (using same format as RSSView for compatibility)
-    const cacheKey = getCacheKey()
-    if (cacheKey) {
-      const cached = getCachedData()
-      localStorage.setItem(
-        cacheKey,
-        JSON.stringify({
-          data: {
-            items: validItems,
-            feeds: cached?.feeds || {},
-          },
-          timestamp: Date.now(),
-        })
-      )
-    }
-
+    await rssApiStore.initializeRSS(rssCollectionId.value, false)
     loadSelectedRSSItem()
   } catch (err) {
     console.error('Error fetching RSS items:', err)
     error.value = 'Failed to fetch RSS items'
-    completedApiCalls.value++
-  } finally {
-    isLoading.value = false
   }
 }
 
@@ -200,51 +79,28 @@ const loadSelectedRSSItem = async () => {
   }
 }
 
-const fetchFeed = async (item: RSSCollectionItem, forceRefresh = false) => {
+const fetchFeed = async (item: any, forceRefresh = false) => {
   if (!item.url) return
 
   error.value = null
 
-  // Check cache first if not forcing refresh
-  if (!forceRefresh) {
-    const cached = getCachedData()
-    if (cached?.feeds && cached.feeds[item.id]) {
-      const cachedFeed = cached.feeds[item.id]
-      // getCachedData already validates the cache expiry, so if we got here, cache is valid
-      rssFeed.value = cachedFeed
-      const displayTitle = cachedFeed.title || item.title || getDomain(item.url)
-      emit('update:title', displayTitle)
-      return
-    }
+  // Check if feed is already loaded in store
+  if (!forceRefresh && rssFeeds.value[item.id]) {
+    rssFeed.value = rssFeeds.value[item.id]
+    const displayTitle = rssFeed.value.title || item.title || getDomain(item.url)
+    emit('update:title', displayTitle)
+    return
   }
 
-  // Only set loading state if we need to fetch from API
   isLoadingFeed.value = true
 
   try {
-    const feed = await fetchRSSFeed(item.url)
+    await rssApiStore.fetchFeedForItem(item.id, item.url)
+    const feed = rssFeeds.value[item.id]
     if (feed) {
       rssFeed.value = feed
       const displayTitle = feed.title || item.title || getDomain(item.url)
       emit('update:title', displayTitle)
-
-      // Update cache (using same format as RSSView for compatibility)
-      const cacheKey = getCacheKey()
-      if (cacheKey) {
-        const cached = getCachedData()
-        const feeds = cached?.feeds || {}
-        feeds[item.id] = feed
-        localStorage.setItem(
-          cacheKey,
-          JSON.stringify({
-            data: {
-              items: rssItems.value,
-              feeds,
-            },
-            timestamp: Date.now(),
-          })
-        )
-      }
     } else {
       error.value = 'Failed to fetch RSS feed'
     }
@@ -270,7 +126,7 @@ const filteredRSSItems = computed(() => {
   })
 })
 
-const selectRSSItem = async (item: RSSCollectionItem) => {
+const selectRSSItem = async (item: any) => {
   selectedRSSItem.value = item
   emit('update:data', {
     ...props.widget.data,
@@ -322,14 +178,6 @@ const initialize = async () => {
   await discoverCollection()
   if (rssCollectionId.value) {
     await fetchRSSItems()
-  } else {
-    // Collection not found - check if we have cached items
-    const cached = getCachedData()
-    if (cached && cached.items && cached.items.length > 0) {
-      // Use cached items even if collection discovery failed
-      rssItems.value = cached.items || []
-      loadSelectedRSSItem()
-    }
   }
 }
 
@@ -341,7 +189,7 @@ watch(
   () => props.widget.data?.rssItemId,
   () => {
     loadSelectedRSSItem()
-  }
+  },
 )
 </script>
 
@@ -410,10 +258,16 @@ watch(
             :src="getFaviconUrl(selectedRSSItem.url)"
             :alt="getDomain(selectedRSSItem.url)"
             class="feed-favicon"
-            @error="(e) => { (e.target as HTMLImageElement).style.display = 'none' }"
+            @error="
+              (e) => {
+                ;(e.target as HTMLImageElement).style.display = 'none'
+              }
+            "
           />
           <div class="feed-title-container">
-            <div class="feed-title">{{ rssFeed.title || selectedRSSItem.title || getDomain(selectedRSSItem.url) }}</div>
+            <div class="feed-title">
+              {{ rssFeed.title || selectedRSSItem.title || getDomain(selectedRSSItem.url) }}
+            </div>
             <div class="feed-url">{{ getDomain(selectedRSSItem.url) }}</div>
           </div>
         </div>
@@ -449,7 +303,12 @@ watch(
       </div>
 
       <div class="widget-footer">
-        <button @click="refreshFeed" class="footer-button" title="Refresh" :disabled="isLoadingFeed">
+        <button
+          @click="refreshFeed"
+          class="footer-button"
+          title="Refresh"
+          :disabled="isLoadingFeed"
+        >
           <RefreshCw :size="16" :class="{ spinning: isLoadingFeed }" />
         </button>
         <button @click="reconfigure" class="footer-button" title="Change RSS feed">
@@ -722,8 +581,8 @@ watch(
 
 a.feed-item-link:visited .feed-item,
 .feed-item-link:visited .feed-item,
-[data-theme="light"] a.feed-item-link:visited .feed-item,
-[data-theme="light"] .feed-item-link:visited .feed-item {
+[data-theme='light'] a.feed-item-link:visited .feed-item,
+[data-theme='light'] .feed-item-link:visited .feed-item {
   border: none !important;
   border-width: 0 !important;
   border-style: none !important;
@@ -840,4 +699,3 @@ a.feed-item-link:visited .feed-item,
   display: none !important;
 }
 </style>
-
