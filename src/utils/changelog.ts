@@ -5,6 +5,10 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: '2026-01-11v2',
+    changes: ['Fix duplicated tags on TagView when notes have multiple tags'],
+  },
+  {
     date: '2026-01-11',
     changes: [
       'Improved PIN Block widget now has search',
