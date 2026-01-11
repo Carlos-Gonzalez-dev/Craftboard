@@ -12,11 +12,17 @@ import {
   ChevronRight,
   RotateCw,
   CircleCheck,
+  Plus,
+  X,
+  Loader,
 } from 'lucide-vue-next'
 import {
   getApiUrl,
   getCraftLinkPreference,
   openCraftLink,
+  getSpaceId,
+  fetchAndCacheSpaceId,
+  getDailyNoteDocumentId,
   type CraftTask,
   type CraftDocument,
 } from '../utils/craftApi'
@@ -54,6 +60,11 @@ const completedApiCalls = computed(() => tasksApiStore.completedApiCalls)
 
 // UI State
 const errorMessage = ref('')
+
+// Add task to day state
+const addTaskForDay = ref<Date | null>(null)
+const addTaskText = ref('')
+const isAddingTask = ref(false)
 
 // View mode with localStorage persistence
 const VIEW_MODE_STORAGE_KEY = 'tasks-view-mode'
@@ -507,6 +518,86 @@ function handleDueDateClick(task: CraftTask) {
   if (hasDailyNote(date)) {
     openDayInCraft(date)
   }
+}
+
+// Show add task input for a specific day
+function showAddTaskInput(day: Date, event: Event) {
+  event.stopPropagation()
+  addTaskForDay.value = day
+  addTaskText.value = ''
+  // Focus input after render
+  nextTick(() => {
+    const input = document.querySelector('.add-task-input') as HTMLInputElement
+    if (input) input.focus()
+  })
+}
+
+// Cancel adding task
+function cancelAddTask() {
+  addTaskForDay.value = null
+  addTaskText.value = ''
+  isAddingTask.value = false
+}
+
+// Add task to a specific day's daily note
+async function addTaskToDay() {
+  if (!addTaskText.value.trim() || !addTaskForDay.value) return
+
+  isAddingTask.value = true
+
+  try {
+    let spaceId = getSpaceId()
+    if (!spaceId) {
+      spaceId = (await fetchAndCacheSpaceId()) || ''
+    }
+    if (!spaceId) {
+      alert('Space ID not configured. Please set it in Settings.')
+      return
+    }
+
+    // Format date as YYYY-MM-DD in local timezone
+    const day = addTaskForDay.value
+    const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
+    const dailyNoteId = await getDailyNoteDocumentId(dateStr)
+
+    if (!dailyNoteId) {
+      alert('Could not find daily note for this date. Please open it first in Craft.')
+      return
+    }
+
+    // Build the task markdown: "- [ ] Task text"
+    const taskMarkdown = `- [ ] ${addTaskText.value.trim()}`
+    const encodedContent = encodeURIComponent(taskMarkdown)
+
+    // Use createblock URL scheme to append task
+    window.location.href = `craftdocs://createblock?parentBlockId=${dailyNoteId}&spaceId=${spaceId}&content=${encodedContent}&index=9999`
+
+    cancelAddTask()
+  } catch (error) {
+    console.error('Failed to add task:', error)
+    alert('Failed to add task. Please try again.')
+  } finally {
+    isAddingTask.value = false
+  }
+}
+
+// Handle keydown in add task input
+function handleAddTaskKeydown(event: KeyboardEvent) {
+  if (event.key === 'Enter') {
+    addTaskToDay()
+  } else if (event.key === 'Escape') {
+    cancelAddTask()
+  }
+}
+
+// Check if add task input is shown for a specific day
+function isAddingTaskForDay(day: Date): boolean {
+  if (!addTaskForDay.value) return false
+  return (
+    addTaskForDay.value.getFullYear() === day.getFullYear() &&
+    addTaskForDay.value.getMonth() === day.getMonth() &&
+    addTaskForDay.value.getDate() === day.getDate()
+  )
 }
 
 // Check if a specific date is a future occurrence of a recurring task
@@ -1048,9 +1139,42 @@ onActivated(() => {
                             'day-today': isToday(day),
                             'day-clickable': hasDailyNote(day),
                           }"
-                          @click="handleDayClick(day)"
                         >
-                          <h3>{{ formatDayHeader(day) }}</h3>
+                          <div class="day-header-content" @click="handleDayClick(day)">
+                            <h3>{{ formatDayHeader(day) }}</h3>
+                            <button
+                              class="add-task-button"
+                              :class="{ 'is-today': isToday(day) }"
+                              title="Add task to this day"
+                              @click="showAddTaskInput(day, $event)"
+                            >
+                              <Plus :size="14" />
+                            </button>
+                          </div>
+                          <!-- Add task input -->
+                          <div v-if="isAddingTaskForDay(day)" class="add-task-container" @click.stop>
+                            <input
+                              v-model="addTaskText"
+                              type="text"
+                              class="add-task-input"
+                              placeholder="New task..."
+                              :disabled="isAddingTask"
+                              @keydown="handleAddTaskKeydown"
+                            />
+                            <div class="add-task-actions">
+                              <button
+                                class="add-task-submit"
+                                :disabled="isAddingTask || !addTaskText.trim()"
+                                @click="addTaskToDay"
+                              >
+                                <Loader v-if="isAddingTask" :size="12" class="spinning" />
+                                <span v-else>Add</span>
+                              </button>
+                              <button class="add-task-cancel" @click="cancelAddTask">
+                                <X :size="14" />
+                              </button>
+                            </div>
+                          </div>
                         </div>
                         <div class="day-tasks">
                           <!-- Loading state for logbook/week tasks in week view -->
@@ -1974,6 +2098,142 @@ onActivated(() => {
   font-weight: 600;
   color: var(--text-primary);
   text-align: center;
+}
+
+.day-header-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.add-task-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.day-header:hover .add-task-button {
+  opacity: 1;
+}
+
+.add-task-button:hover {
+  background: rgba(168, 85, 247, 0.3);
+  transform: scale(1.1);
+}
+
+.add-task-button.is-today {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.add-task-button.is-today:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.add-task-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 0 4px;
+}
+
+.add-task-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.add-task-input:focus {
+  border-color: #a855f7;
+}
+
+.add-task-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.add-task-submit {
+  padding: 5px 12px;
+  background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.add-task-submit:hover:not(:disabled) {
+  transform: scale(1.02);
+}
+
+.add-task-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.add-task-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.add-task-cancel:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Mobile: always show add button */
+@media (max-width: 768px) {
+  .add-task-button {
+    opacity: 1;
+  }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .day-tasks {
