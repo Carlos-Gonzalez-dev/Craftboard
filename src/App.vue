@@ -555,7 +555,7 @@ onUnmounted(() => {
             </button>
           </div>
           <div class="mobile-footer-right">
-            <span class="mobile-footer-about">Carlos González, 2025</span>
+            <span class="mobile-footer-about">Carlos González, 2025 - 2026</span>
             <span class="mobile-footer-contact">craftboard@dende.gal</span>
             <a
               href="https://espazo.dende.gal/craftboard-documentation"
