@@ -14,17 +14,15 @@ import {
 } from 'lucide-vue-next'
 import {
   getApiUrl,
-  fetchTasks,
-  fetchDocuments,
-  getCacheExpiryMs,
   getCraftLinkPreference,
   openCraftLink,
   type CraftTask,
   type CraftDocument,
 } from '../utils/craftApi'
-import { fetchCalendarEvents, type CalendarEvent } from '../utils/icalParser'
+import type { CalendarEvent } from '../utils/icalParser'
 import { useRoute } from 'vue-router'
 import { useTasksStore } from '../stores/tasks'
+import { useTasksApiStore } from '../stores/tasksApi'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import ViewTabs from '../components/ViewTabs.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
@@ -32,27 +30,25 @@ import ProgressIndicator from '../components/ProgressIndicator.vue'
 
 const route = useRoute()
 const tasksStore = useTasksStore()
+const tasksApiStore = useTasksApiStore()
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
 const setSubheader =
   inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
-// Cache keys
-const CACHE_PREFIX = 'tasks-cache-'
+// Store computed properties
+const inboxTasks = computed(() => tasksApiStore.inboxTasks)
+const activeTasks = computed(() => tasksApiStore.activeTasks)
+const upcomingTasks = computed(() => tasksApiStore.upcomingTasks)
+const dailyNotes = computed(() => tasksApiStore.dailyNotes)
+const calendarEvents = computed(() => tasksApiStore.calendarEvents)
+const isLoading = computed(() => tasksApiStore.isLoading)
+const isLoadingCalendar = computed(() => tasksApiStore.isLoadingCalendar)
+const totalApiCalls = computed(() => tasksApiStore.totalApiCalls)
+const completedApiCalls = computed(() => tasksApiStore.completedApiCalls)
 
-// State
-const inboxTasks = computed(() => tasksStore.inboxTasks)
-const activeTasks = computed(() => tasksStore.activeTasks)
-const upcomingTasks = computed(() => tasksStore.upcomingTasks)
+// UI State
 const errorMessage = ref('')
-const isLoading = ref(false)
-const dailyNotes = ref<Map<string, CraftDocument>>(new Map())
-const calendarEvents = ref<CalendarEvent[]>([])
-const isLoadingCalendar = ref(false)
-
-// Progress tracking
-const totalApiCalls = ref(0)
-const completedApiCalls = ref(0)
 
 // View mode with localStorage persistence
 const VIEW_MODE_STORAGE_KEY = 'tasks-view-mode'
@@ -685,131 +681,6 @@ function formatWeekRange(): string {
   return `Week ${weekNo}, ${year}`
 }
 
-// Cache helpers
-function getCacheKey(filter: string) {
-  return `${CACHE_PREFIX}${filter}`
-}
-
-function getCachedData(filter: string) {
-  try {
-    const cacheKey = getCacheKey(filter)
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { data, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-    const cacheExpiryMs = getCacheExpiryMs()
-
-    if (cacheExpiryMs === 0) return null // Caching disabled
-
-    if (now - timestamp < cacheExpiryMs) {
-      return data
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch {
-    return null
-  }
-}
-
-function setCachedData(filter: string, data: CraftTask[]) {
-  try {
-    const cacheKey = getCacheKey(filter)
-    const cacheData = {
-      data,
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-  } catch (error) {
-    console.error('Error saving cache:', error)
-  }
-}
-
-function clearCache() {
-  try {
-    localStorage.removeItem(getCacheKey('inbox'))
-    localStorage.removeItem(getCacheKey('active'))
-    localStorage.removeItem(getCacheKey('upcoming'))
-    localStorage.removeItem(getCacheKey('daily_notes'))
-    localStorage.removeItem(getCacheKey('calendar_events'))
-  } catch (error) {
-    console.error('Error clearing cache:', error)
-  }
-}
-
-// Cache helpers for daily notes
-function getCachedDailyNotes() {
-  try {
-    const cacheKey = getCacheKey('daily_notes')
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { data, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-    const cacheExpiryMs = getCacheExpiryMs()
-
-    if (cacheExpiryMs === 0) return null // Caching disabled
-
-    if (now - timestamp < cacheExpiryMs) {
-      return data
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch {
-    return null
-  }
-}
-
-function setCachedDailyNotes(data: Map<string, CraftDocument>) {
-  try {
-    const cacheKey = getCacheKey('daily_notes')
-    // Convert Map to array for storage
-    const dataArray = Array.from(data.entries())
-    const cacheData = {
-      data: dataArray,
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-  } catch (error) {
-    console.error('Error saving daily notes cache:', error)
-  }
-}
-
-// Load daily notes from the daily_notes folder
-const loadDailyNotes = async (forceRefresh = false) => {
-  try {
-    // Check cache first
-    if (!forceRefresh) {
-      const cached = getCachedDailyNotes()
-      if (cached) {
-        // Convert array back to Map
-        dailyNotes.value = new Map(cached)
-        return false // No API call made
-      }
-    }
-
-    const result = await fetchDocuments({ location: 'daily_notes', fetchMetadata: true })
-    const notesMap = new Map<string, CraftDocument>()
-
-    result.items.forEach((doc) => {
-      if (doc.dailyNoteDate) {
-        notesMap.set(doc.dailyNoteDate, doc)
-      }
-    })
-
-    dailyNotes.value = notesMap
-    setCachedDailyNotes(notesMap)
-    return true // API call made
-  } catch (error) {
-    console.error('Error loading daily notes:', error)
-    // Don't show error to user, just log it
-    dailyNotes.value = new Map()
-    return true // Count as completed even on error
-  }
-}
-
 // Check if a daily note exists for a date
 function hasDailyNote(date: Date): boolean {
   const dateStr = formatDateForCraft(date)
@@ -826,69 +697,12 @@ const loadTasks = async (forceRefresh = false) => {
   const apiUrl = getApiUrl()
   if (!apiUrl) {
     errorMessage.value = 'Craft API URL not configured. Please configure it in Settings.'
-    isLoading.value = false
     return
   }
 
-  isLoading.value = true
   errorMessage.value = ''
-  completedApiCalls.value = 0
-  totalApiCalls.value = 0
 
-  try {
-    // Count API calls needed (only count if not cached or force refresh)
-    let apiCallCount = 0
-
-    if (forceRefresh || !getCachedData('inbox')) apiCallCount++
-    if (forceRefresh || !getCachedData('active')) apiCallCount++
-    if (forceRefresh || !getCachedData('upcoming')) apiCallCount++
-    if (forceRefresh || !getCachedDailyNotes()) apiCallCount++
-    if (forceRefresh || !getCachedCalendarEvents()) apiCallCount++
-
-    totalApiCalls.value = apiCallCount
-
-    // Helper function to load task type with caching
-    const loadTaskType = async (
-      type: 'inbox' | 'active' | 'upcoming',
-      setter: (items: CraftTask[]) => void,
-    ) => {
-      const cached = getCachedData(type)
-      if (!forceRefresh && cached) {
-        setter(cached)
-      } else {
-        const result = await fetchTasks(type)
-        setter(result.items)
-        setCachedData(type, result.items)
-        completedApiCalls.value++
-      }
-    }
-
-    // Load all task types in parallel
-    await Promise.all([
-      loadTaskType('inbox', tasksStore.setInboxTasks),
-      loadTaskType('active', tasksStore.setActiveTasks),
-      loadTaskType('upcoming', tasksStore.setUpcomingTasks),
-    ])
-
-    // Load daily notes and calendar events in parallel
-    const [dailyNotesMadeCall, calendarMadeCall] = await Promise.all([
-      loadDailyNotes(forceRefresh),
-      loadCalendarEvents(forceRefresh),
-    ])
-
-    if (dailyNotesMadeCall) completedApiCalls.value++
-    if (calendarMadeCall) completedApiCalls.value++
-  } catch (err) {
-    errorMessage.value = err instanceof Error ? err.message : 'Failed to load tasks'
-    console.error('Error loading tasks:', err)
-  } finally {
-    isLoading.value = false
-  }
-}
-
-// Load calendar events from multiple iCal URLs
-const loadCalendarEvents = async (forceRefresh = false) => {
-  // Load calendar URLs (support both old single URL format and new array format)
+  // Load calendar URLs
   let calendarUrls: string[] = []
   const savedUrls = localStorage.getItem('calendar-urls')
   if (savedUrls) {
@@ -899,100 +713,11 @@ const loadCalendarEvents = async (forceRefresh = false) => {
     }
   }
 
-  // Filter out empty URLs
-  const validUrls = calendarUrls.filter((url) => url && url.trim() !== '')
-
-  if (validUrls.length === 0) {
-    calendarEvents.value = []
-    return false // No API call made
-  }
-
   try {
-    // Check cache first
-    if (!forceRefresh) {
-      const cached = getCachedCalendarEvents()
-      if (cached) {
-        calendarEvents.value = cached
-        return false // No API call made
-      }
-    }
-
-    isLoadingCalendar.value = true
-
-    // Fetch events from all calendars in parallel
-    const eventPromises = validUrls.map((url) =>
-      fetchCalendarEvents(url.trim()).catch((error) => {
-        console.error(`Error fetching calendar from ${url}:`, error)
-        return [] // Return empty array on error so other calendars still load
-      }),
-    )
-
-    const allEventsArrays = await Promise.all(eventPromises)
-    const allEvents = allEventsArrays.flat()
-
-    // Do not restrict by current week; store all events.
-    // getCalendarEventsForDate() will pick the ones for the displayed day.
-    calendarEvents.value = allEvents
-
-    setCachedCalendarEvents(calendarEvents.value)
-    return true // API call made
-  } catch (error) {
-    console.error('Error loading calendar events:', error)
-    calendarEvents.value = []
-    return true // Count as completed even on error
-  } finally {
-    isLoadingCalendar.value = false
-  }
-}
-
-// Cache helpers for calendar events
-function getCachedCalendarEvents(): CalendarEvent[] | null {
-  try {
-    const cacheKey = getCacheKey('calendar_events')
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { data, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-    const cacheExpiryMs = getCacheExpiryMs()
-
-    if (cacheExpiryMs === 0) return null
-
-    if (now - timestamp < cacheExpiryMs) {
-      // Convert date strings back to Date objects
-      return data.map(
-        (event: {
-          id: string
-          title: string
-          start: string
-          end: string
-          description?: string
-          location?: string
-        }) => ({
-          ...event,
-          start: new Date(event.start),
-          end: new Date(event.end),
-        }),
-      )
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch {
-    return null
-  }
-}
-
-function setCachedCalendarEvents(data: CalendarEvent[]) {
-  try {
-    const cacheKey = getCacheKey('calendar_events')
-    const cacheData = {
-      data,
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-  } catch (error) {
-    console.error('Error saving calendar events cache:', error)
+    await tasksApiStore.initializeTasks(calendarUrls, forceRefresh)
+  } catch (err) {
+    errorMessage.value = err instanceof Error ? err.message : 'Failed to load tasks'
+    console.error('Error loading tasks:', err)
   }
 }
 
@@ -1008,9 +733,18 @@ function getCalendarEventsForDate(date: Date): CalendarEvent[] {
 }
 
 const refreshTasks = async () => {
-  clearCache()
-  localStorage.removeItem(getCacheKey('calendar_events'))
-  await loadTasks(true)
+  // Load calendar URLs
+  let calendarUrls: string[] = []
+  const savedUrls = localStorage.getItem('calendar-urls')
+  if (savedUrls) {
+    try {
+      calendarUrls = JSON.parse(savedUrls)
+    } catch {
+      // Fallback to old format
+    }
+  }
+
+  await tasksApiStore.refreshTasks(calendarUrls)
 }
 
 // Open task in Craft

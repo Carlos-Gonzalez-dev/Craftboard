@@ -3,22 +3,20 @@ import { ref, computed, onMounted, onActivated, onUnmounted, watch, inject, h } 
 import { Rss, RefreshCw, ExternalLink } from 'lucide-vue-next'
 import {
   getApiUrl,
-  getApiToken,
-  getCollectionItems,
-  getCacheExpiryMs,
   getCraftLinkPreference,
   buildCraftAppLink,
   buildCraftWebLink,
   getSpaceId,
   getShareToken,
 } from '../utils/craftApi'
-import { fetchRSSFeed, type RSSFeed } from '../utils/rssParser'
+import { type RSSFeed } from '../utils/rssParser'
 import { getFaviconUrl } from '../utils/favicon'
 import { useRoute, useRouter } from 'vue-router'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import ViewTabs from '../components/ViewTabs.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
+import { useRSSApiStore, type RSSCollectionItem } from '../stores/rssApi'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,33 +25,24 @@ const registerRefresh =
 const setSubheader =
   inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
+const rssApiStore = useRSSApiStore()
+
 // API Configuration
 const apiBaseUrl = ref('')
 const selectedDocumentId = ref<string | null>(null)
 const rssCollectionId = ref<string | null>(null)
-
-// Cache keys
-const CACHE_PREFIX = 'rss-cache-'
-
-// State
-const rssItems = ref<any[]>([])
-const rssFeeds = ref<Map<string, RSSFeed>>(new Map())
-const loadingFeeds = ref<Set<string>>(new Set())
-const errorMessage = ref('')
-const isLoading = ref(false)
 const selectedCategory = ref<string | null>(null)
 
-// Progress tracking
-const totalApiCalls = ref(0)
-const completedApiCalls = ref(0)
+// UI State
+const errorMessage = ref('')
 
-interface RSSCollectionItem {
-  id: string
-  title: string
-  url: string
-  category: string
-  tags?: string[]
-}
+// Store computed properties
+const rssItems = computed(() => rssApiStore.rssItems)
+const rssFeeds = computed(() => rssApiStore.rssFeeds)
+const loadingFeeds = computed(() => rssApiStore.loadingFeeds)
+const isLoading = computed(() => rssApiStore.isLoading)
+const totalApiCalls = computed(() => rssApiStore.totalApiCalls)
+const completedApiCalls = computed(() => rssApiStore.completedApiCalls)
 
 // Grouped RSS items by category
 const groupedItems = computed(() => {
@@ -93,7 +82,7 @@ const selectedCategoryItems = computed(() => {
 const initializeSelectedCategory = () => {
   // Check if there's a category in the URL query
   const categoryFromUrl = route.query.category as string | undefined
-  
+
   if (categoryFromUrl !== undefined) {
     // If category is empty string or 'all', show All
     if (categoryFromUrl === '' || categoryFromUrl.toLowerCase() === 'all') {
@@ -130,255 +119,43 @@ const getDisplayTitle = (item: RSSCollectionItem) => {
   return title
 }
 
-const getHeaders = () => {
-  const token = getApiToken()
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  }
-}
-
 const loadApiUrl = () => {
   apiBaseUrl.value = getApiUrl() || ''
   if (!apiBaseUrl.value) {
     console.warn('RSSView: No API URL configured')
     errorMessage.value = 'Craft API URL not configured. Please configure it in Settings.'
-    isLoading.value = false
     return
   }
 
-  initializeRSS(false)
+  discoverCollection()
 }
 
-const initializeRSS = async (forceRefresh = false) => {
-  if (!apiBaseUrl.value) {
-    return
-  }
-
-  isLoading.value = true
-  errorMessage.value = ''
-  completedApiCalls.value = 0
-  totalApiCalls.value = 0
-
-  // Load collection ID from settings
-  await discoverCollection(forceRefresh)
-
-  // Count API calls needed
-  let apiCallCount = 0
-  if (forceRefresh || !getCachedData()) apiCallCount++ // fetchCollectionItems
-
-  totalApiCalls.value = apiCallCount
-
-  if (!rssCollectionId.value) {
-    isLoading.value = false
-    return
-  }
-
-  // Check cache first
-  if (!forceRefresh) {
-    const cached = getCachedData()
-    if (cached) {
-      rssItems.value = cached.items || []
-      rssFeeds.value = new Map(Object.entries(cached.feeds || {}))
-      isLoading.value = false
-      // Still fetch feeds in background
-      fetchAllFeeds()
-      return
-    } else {
-    }
-  } else {
-    clearCache()
-  }
-
-  if (rssCollectionId.value) {
-    await fetchCollectionItems(forceRefresh)
-  }
-}
-
-const discoverCollection = async (forceRefresh = false) => {
-  if (!apiBaseUrl.value) return
-
+const discoverCollection = () => {
   // Load collection ID from settings
   const rssId = localStorage.getItem('collection-id-rss')
 
   if (!rssId) {
     errorMessage.value =
       'RSS collection ID not configured. Please configure it in Settings > API > Collection IDs.'
-    isLoading.value = false
-    completedApiCalls.value++
     return
   }
 
   rssCollectionId.value = rssId
+  initializeRSSData(false)
 }
 
-const getCacheKey = () => {
-  if (!rssCollectionId.value) return null
-  return `${CACHE_PREFIX}${rssCollectionId.value}`
-}
-
-const getCachedData = () => {
-  try {
-    const cacheKey = getCacheKey()
-    if (!cacheKey) return null
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { data, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-    const cacheExpiryMs = getCacheExpiryMs()
-
-    if (cacheExpiryMs > 0 && now - timestamp < cacheExpiryMs) {
-      return data
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch (error) {
-    console.error('Error reading cache:', error)
-    return null
-  }
-}
-
-const setCachedData = (items: RSSCollectionItem[], feeds: Map<string, RSSFeed>) => {
-  try {
-    const cacheKey = getCacheKey()
-    if (!cacheKey) return
-    const cacheData = {
-      data: {
-        items,
-        feeds: Object.fromEntries(feeds),
-      },
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-  } catch (error) {
-    console.error('Error saving cache:', error)
-  }
-}
-
-const clearCache = () => {
-  try {
-    const cacheKey = getCacheKey()
-    if (cacheKey) {
-      localStorage.removeItem(cacheKey)
-    }
-  } catch (error) {
-    console.error('Error clearing cache:', error)
-  }
-}
-
-const fetchCollectionItems = async (forceRefresh = false) => {
-  if (!apiBaseUrl.value || !rssCollectionId.value) {
-    isLoading.value = false
+const initializeRSSData = async (forceRefresh = false) => {
+  if (!rssCollectionId.value) {
     return
   }
 
-  try {
-    const items = await getCollectionItems(rssCollectionId.value)
-    completedApiCalls.value++
-
-    // Filter items with mandatory fields (title, URL, Category)
-    // Title is in item.title, not in properties
-    const validItems: RSSCollectionItem[] = items
-      .map((item: any) => {
-        const properties = item.properties || {}
-
-        // Title comes from item.title, not properties
-        let title = item.title || ''
-        // Replace "Untitled" with empty string
-        if (title.trim().toLowerCase() === 'untitled') {
-          title = ''
-        }
-        // Try different property name variations (case-insensitive) for URL and Category
-        const url = properties.URL || properties.url || properties['URL'] || properties['url'] || ''
-        const category =
-          properties.Category ||
-          properties.category ||
-          properties['Category'] ||
-          properties['category'] ||
-          ''
-        const tags =
-          properties.tags || properties.Tags || properties['tags'] || properties['Tags'] || []
-
-        // Only include items with all mandatory fields (title can be empty, but URL and category are required)
-        if (url && category) {
-          return {
-            id: item.id,
-            title: String(title),
-            url: String(url),
-            category: String(category),
-            tags: Array.isArray(tags) ? tags.map((t: any) => String(t)) : [],
-          }
-        }
-        return null
-      })
-      .filter((item: RSSCollectionItem | null): item is RSSCollectionItem => item !== null)
-
-    rssItems.value = validItems
-
-    // Cache items
-    setCachedData(validItems, rssFeeds.value)
-
-    // Fetch RSS feeds
-    await fetchAllFeeds()
-  } catch (error) {
-    console.error('Error fetching collection items:', error)
-    errorMessage.value = 'Failed to fetch RSS collection items. Please check Settings.'
-    completedApiCalls.value++
-    isLoading.value = false
-  }
-}
-
-const fetchAllFeeds = async () => {
-  isLoading.value = false
-
-  // Fetch feeds for all items
-  const feedPromises = rssItems.value.map((item) => fetchFeedForItem(item))
-  await Promise.all(feedPromises)
-}
-
-const fetchFeedForItem = async (item: RSSCollectionItem, forceRefresh = false) => {
-  // Skip if already loading (unless forcing refresh)
-  if (!forceRefresh && (rssFeeds.value.has(item.id) || loadingFeeds.value.has(item.id))) {
-    return
-  }
-
-  // Clear existing feed if forcing refresh
-  if (forceRefresh) {
-    rssFeeds.value.delete(item.id)
-  }
-
-  loadingFeeds.value.add(item.id)
-
-  try {
-    const feed = await fetchRSSFeed(item.url)
-
-    if (feed) {
-      if (feed.items.length > 0) {
-      } else {
-        console.warn(
-          `[fetchFeedForItem] ⚠️ Feed parsed but has 0 items for ${item.title}. Feed title: "${feed.title}"`,
-        )
-      }
-      rssFeeds.value.set(item.id, feed)
-      setCachedData(rssItems.value, rssFeeds.value)
-    } else {
-      console.warn(
-        `[fetchFeedForItem] ⚠️ Failed to fetch or parse feed for ${item.title} - feed is null`,
-      )
-    }
-  } catch (error) {
-    console.error(`[fetchFeedForItem] ❌ Error fetching RSS feed for ${item.title}:`, error)
-  } finally {
-    loadingFeeds.value.delete(item.id)
-  }
+  errorMessage.value = ''
+  await rssApiStore.initializeRSS(rssCollectionId.value, forceRefresh)
 }
 
 const refreshFeeds = async () => {
-  clearCache()
-  rssFeeds.value.clear()
-  await initializeRSS(true)
+  if (!rssCollectionId.value) return
+  await rssApiStore.refreshRSS(rssCollectionId.value)
 }
 
 const openCollectionInCraft = () => {
@@ -419,10 +196,10 @@ watch(selectedCategory, (newCategory) => {
   // Update URL query parameter
   const currentCategory = route.query.category
   const newCategoryParam = newCategory || ''
-  
+
   if (currentCategory !== newCategoryParam) {
     router.replace({
-      query: { ...route.query, category: newCategoryParam || undefined }
+      query: { ...route.query, category: newCategoryParam || undefined },
     })
   }
 })
@@ -450,7 +227,7 @@ onMounted(() => {
         h(ViewTabs, {
           tabs: [
             { id: '', label: 'All' },
-            ...categories.value.map((cat) => ({ id: cat, label: cat }))
+            ...categories.value.map((cat) => ({ id: cat, label: cat })),
           ],
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
@@ -493,7 +270,7 @@ onActivated(() => {
         h(ViewTabs, {
           tabs: [
             { id: '', label: 'All' },
-            ...categories.value.map((cat) => ({ id: cat, label: cat }))
+            ...categories.value.map((cat) => ({ id: cat, label: cat })),
           ],
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
@@ -528,7 +305,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
         h(ViewTabs, {
           tabs: [
             { id: '', label: 'All' },
-            ...categories.value.map((cat) => ({ id: cat, label: cat }))
+            ...categories.value.map((cat) => ({ id: cat, label: cat })),
           ],
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {

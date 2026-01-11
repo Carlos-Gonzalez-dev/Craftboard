@@ -20,8 +20,6 @@ import {
 import { useRouter, useRoute } from 'vue-router'
 import {
   getApiUrl,
-  getApiToken,
-  getCacheExpiryMs,
   getCraftLinkPreference,
   buildCraftAppLink,
   buildCraftWebLink,
@@ -31,6 +29,7 @@ import {
 import ViewSubheader from '../components/ViewSubheader.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
+import { useFlashcardsApiStore } from '../stores/flashcardsApi'
 
 const route = useRoute()
 const registerRefresh =
@@ -47,8 +46,7 @@ marked.setOptions({
 // Session version for localStorage compatibility
 const SESSION_VERSION = 1
 
-// Cache keys
-const CACHE_PREFIX = 'flashcards-cache-'
+const flashcardsApiStore = useFlashcardsApiStore()
 
 // API Configuration
 const apiBaseUrl = ref('')
@@ -59,18 +57,16 @@ const router = useRouter()
 const decksCollectionId = ref<string | null>(null)
 const flashcardsCollectionId = ref<string | null>(null)
 
-// State
-const loading = ref(true)
+// Store computed properties
+const decks = ref<any[]>([])
+const flashcards = computed(() => flashcardsApiStore.flashcards)
+const loading = computed(() => flashcardsApiStore.isLoading)
+const totalApiCalls = computed(() => flashcardsApiStore.totalApiCalls)
+const completedApiCalls = computed(() => flashcardsApiStore.completedApiCalls)
+
+// UI State
 const error = ref<string | null>(null)
 const currentView = ref<'decks' | 'study' | 'summary'>('decks')
-
-// Progress tracking
-const totalApiCalls = ref(0)
-const completedApiCalls = ref(0)
-
-// Data
-const decks = ref<any[]>([])
-const flashcards = ref<any[]>([])
 const sessions = ref<any[]>([])
 const selectedDeck = ref<any>(null)
 const currentDeckFlashcards = ref<any[]>([])
@@ -161,22 +157,10 @@ const recentSessions = computed(() => {
 })
 
 // Methods
-const getHeaders = () => {
-  const token = getApiToken()
-  if (!token) {
-    throw new Error('Craft API token not configured')
-  }
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  }
-}
-
 const loadApiUrl = () => {
   apiBaseUrl.value = getApiUrl() || ''
   if (!apiBaseUrl.value) {
     error.value = 'Craft API URL not configured. Please configure it in Settings.'
-    loading.value = false
     return
   }
 
@@ -184,8 +168,11 @@ const loadApiUrl = () => {
 }
 
 const refreshFlashcards = async () => {
-  clearCache()
-  await initializeFlashcards(true)
+  if (!decksCollectionId.value || !flashcardsCollectionId.value) return
+  await flashcardsApiStore.refreshFlashcards(decksCollectionId.value, flashcardsCollectionId.value)
+  processDecks(flashcardsApiStore.decks)
+  loadSessions()
+  preloadAllImages()
 }
 
 const openCollectionInCraft = () => {
@@ -212,10 +199,7 @@ const initializeFlashcards = async (forceRefresh = false) => {
     return
   }
 
-  loading.value = true
   error.value = null
-  completedApiCalls.value = 0
-  totalApiCalls.value = 0
 
   // Load collection IDs from settings
   const decksId = localStorage.getItem('collection-id-decks')
@@ -224,168 +208,19 @@ const initializeFlashcards = async (forceRefresh = false) => {
   if (!decksId || !flashcardsId) {
     error.value =
       'Collection IDs not configured. Please configure them in Settings > API > Collection IDs.'
-    loading.value = false
     return
   }
 
   decksCollectionId.value = decksId
   flashcardsCollectionId.value = flashcardsId
 
-  // Count API calls needed
-  let apiCallCount = 0
-  if (forceRefresh || !getCachedData()) apiCallCount += 2 // loadDecks (2 calls: decks + flashcards)
-
-  totalApiCalls.value = apiCallCount
-
-  // Load decks with the collection IDs
-  if (decksCollectionId.value && flashcardsCollectionId.value) {
-    await loadDecks(forceRefresh)
-  }
-}
-
-const getCacheKey = () => {
-  if (!decksCollectionId.value || !flashcardsCollectionId.value) return null
-  return `${CACHE_PREFIX}${decksCollectionId.value}-${flashcardsCollectionId.value}`
-}
-
-const getCachedData = () => {
-  const cacheKey = getCacheKey()
-  if (!cacheKey) return null
-
   try {
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { data, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-    const cacheExpiryMs = getCacheExpiryMs()
-
-    if (cacheExpiryMs > 0 && now - timestamp < cacheExpiryMs) {
-      return data
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch (error) {
-    console.error('Error reading cache:', error)
-    return null
-  }
-}
-
-const setCachedData = (decks: any[], flashcards: any[]) => {
-  const cacheKey = getCacheKey()
-  if (!cacheKey) return
-
-  try {
-    const cacheData = {
-      data: {
-        decks,
-        flashcards,
-      },
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-  } catch (error) {
-    console.error('Error saving cache:', error)
-  }
-}
-
-const clearCache = () => {
-  try {
-    const cacheKey = getCacheKey()
-    if (cacheKey) {
-      localStorage.removeItem(cacheKey)
-    }
-  } catch (error) {
-    console.error('Error clearing cache:', error)
-  }
-}
-
-const loadDecks = async (forceRefresh = false) => {
-  if (!apiBaseUrl.value || !decksCollectionId.value || !flashcardsCollectionId.value) {
-    loading.value = false
-    return
-  }
-
-  loading.value = true
-  error.value = null
-
-  try {
-    // Check cache first
-    if (!forceRefresh) {
-      const cached = getCachedData()
-      if (cached) {
-        flashcards.value = cached.flashcards || []
-        processDecks(cached.decks || [])
-
-        // Load sessions from localStorage
-        loadSessions()
-
-        // Preload all images
-        preloadAllImages()
-
-        loading.value = false
-        return
-      }
-    }
-
-    // Fetch decks
-    const decksUrl = `${apiBaseUrl.value}/collections/${decksCollectionId.value}/items`
-    const decksResponse = await fetch(decksUrl, {
-      method: 'GET',
-      headers: getHeaders(),
-    })
-    if (!decksResponse.ok) {
-      if (decksResponse.status === 404) {
-        throw new Error(
-          'Deck collection not found. Please check your Collection IDs in Settings > API.',
-        )
-      }
-      throw new Error(
-        `Failed to fetch decks (${decksResponse.status}). Please check your Collection IDs in Settings > API.`,
-      )
-    }
-    const decksData = await decksResponse.json()
-    completedApiCalls.value++
-
-    // Fetch flashcards
-    const flashcardsUrl = `${apiBaseUrl.value}/collections/${flashcardsCollectionId.value}/items`
-    const flashcardsResponse = await fetch(flashcardsUrl, {
-      method: 'GET',
-      headers: getHeaders(),
-    })
-    if (!flashcardsResponse.ok) {
-      if (flashcardsResponse.status === 404) {
-        throw new Error(
-          'Flashcard collection not found. Please check your Collection IDs in Settings > API.',
-        )
-      }
-      throw new Error(
-        `Failed to fetch flashcards (${flashcardsResponse.status}). Please check your Collection IDs in Settings > API.`,
-      )
-    }
-    const flashcardsData = await flashcardsResponse.json()
-    completedApiCalls.value++
-
-    const decksItems = decksData.items || []
-    const flashcardsItems = flashcardsData.items || []
-
-    flashcards.value = flashcardsItems
-    processDecks(decksItems)
-
-    // Cache the items
-    setCachedData(decksItems, flashcardsItems)
-
-    // Load sessions from localStorage
+    await flashcardsApiStore.initializeFlashcards(decksId, flashcardsId, forceRefresh)
+    processDecks(flashcardsApiStore.decks)
     loadSessions()
-
-    // Preload all images
     preloadAllImages()
-
-    loading.value = false
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to load data'
-    loading.value = false
     console.error('Error loading data:', err)
   }
 }

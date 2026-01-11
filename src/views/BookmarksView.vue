@@ -3,9 +3,6 @@ import { ref, computed, onMounted, onActivated, onUnmounted, watch, inject, h } 
 import { Bookmark, ExternalLink, Search, X, RefreshCw } from 'lucide-vue-next'
 import {
   getApiUrl,
-  getApiToken,
-  getCollectionItems,
-  getCacheExpiryMs,
   getCraftLinkPreference,
   buildCraftAppLink,
   buildCraftWebLink,
@@ -19,6 +16,7 @@ import ViewSubheader from '../components/ViewSubheader.vue'
 import ViewTabs from '../components/ViewTabs.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
+import { useBookmarksApiStore, type BookmarkItem } from '../stores/bookmarksApi'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,33 +25,24 @@ const registerRefresh =
 const setSubheader =
   inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
+const bookmarksApiStore = useBookmarksApiStore()
+
 // API Configuration
 const apiBaseUrl = ref('')
 const selectedDocumentId = ref<string | null>(null)
 const bookmarksCollectionId = ref<string | null>(null)
 
-// Cache keys
-const CACHE_PREFIX = 'bookmarks-cache-'
-
-// State
-const bookmarks = ref<any[]>([])
+// UI State
 const errorMessage = ref('')
-const isLoading = ref(false)
 const selectedCategory = ref<string | null>(null)
 const searchQuery = ref('')
 const selectedTags = ref<Set<string>>(new Set())
 
-// Progress tracking
-const totalApiCalls = ref(0)
-const completedApiCalls = ref(0)
-
-interface BookmarkItem {
-  id: string
-  title: string
-  url: string
-  category: string
-  tags?: string[]
-}
+// Store computed properties
+const bookmarks = computed(() => bookmarksApiStore.bookmarks)
+const isLoading = computed(() => bookmarksApiStore.isLoading)
+const totalApiCalls = computed(() => bookmarksApiStore.totalApiCalls)
+const completedApiCalls = computed(() => bookmarksApiStore.completedApiCalls)
 
 // Grouped bookmarks by category
 const groupedBookmarks = computed(() => {
@@ -186,202 +175,43 @@ const initializeSelectedCategory = () => {
 const tagHueMap = createTagHueMap(allTags)
 const getTagColor = createGetTagColor(tagHueMap)
 
-const getHeaders = () => {
-  const token = getApiToken()
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  }
-}
-
 const loadApiUrl = () => {
   apiBaseUrl.value = getApiUrl() || ''
   if (!apiBaseUrl.value) {
     errorMessage.value = 'Craft API URL not configured. Please configure it in Settings.'
-    isLoading.value = false
     return
   }
 
-  initializeBookmarks(false)
+  discoverCollection()
 }
 
-const initializeBookmarks = async (forceRefresh = false) => {
-  if (!apiBaseUrl.value) {
-    return
-  }
-
-  isLoading.value = true
-  errorMessage.value = ''
-  completedApiCalls.value = 0
-  totalApiCalls.value = 0
-
-  // Load collection ID from settings
-  await discoverCollection(forceRefresh)
-
-  // Count API calls needed
-  let apiCallCount = 0
-  if (forceRefresh || !getCachedData()) apiCallCount++ // fetchCollectionItems
-
-  totalApiCalls.value = apiCallCount
-
-  if (!bookmarksCollectionId.value) {
-    isLoading.value = false
-    return
-  }
-
-  // Check cache first
-  if (!forceRefresh) {
-    const cached = getCachedData()
-    if (cached) {
-      bookmarks.value = cached || []
-      isLoading.value = false
-      initializeSelectedCategory()
-      return
-    }
-  } else {
-    clearCache()
-  }
-
-  if (bookmarksCollectionId.value) {
-    await fetchCollectionItems(forceRefresh)
-  }
-}
-
-const discoverCollection = async (forceRefresh = false) => {
-  if (!apiBaseUrl.value) return
-
+const discoverCollection = () => {
   // Load collection ID from settings
   const bookmarksId = localStorage.getItem('collection-id-bookmarks')
 
   if (!bookmarksId) {
     errorMessage.value =
       'Bookmarks collection ID not configured. Please configure it in Settings > API > Collection IDs.'
-    isLoading.value = false
-    completedApiCalls.value++
     return
   }
 
   bookmarksCollectionId.value = bookmarksId
+  initializeBookmarksData(false)
 }
 
-const getCacheKey = () => {
-  if (!bookmarksCollectionId.value) return null
-  return `${CACHE_PREFIX}${bookmarksCollectionId.value}`
-}
-
-const getCachedData = () => {
-  try {
-    const cacheKey = getCacheKey()
-    if (!cacheKey) return null
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { data, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-    const cacheExpiryMs = getCacheExpiryMs()
-
-    if (cacheExpiryMs > 0 && now - timestamp < cacheExpiryMs) {
-      return data
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch (error) {
-    console.error('Error reading cache:', error)
-    return null
-  }
-}
-
-const setCachedData = (items: BookmarkItem[]) => {
-  try {
-    const cacheKey = getCacheKey()
-    if (!cacheKey) return
-    const cacheData = {
-      data: items,
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-  } catch (error) {
-    console.error('Error saving cache:', error)
-  }
-}
-
-const clearCache = () => {
-  try {
-    const cacheKey = getCacheKey()
-    if (cacheKey) {
-      localStorage.removeItem(cacheKey)
-    }
-  } catch (error) {
-    console.error('Error clearing cache:', error)
-  }
-}
-
-const fetchCollectionItems = async (forceRefresh = false) => {
-  if (!apiBaseUrl.value || !bookmarksCollectionId.value) {
-    isLoading.value = false
+const initializeBookmarksData = async (forceRefresh = false) => {
+  if (!bookmarksCollectionId.value) {
     return
   }
 
-  try {
-    const items = await getCollectionItems(bookmarksCollectionId.value)
-    completedApiCalls.value++
-
-    // Filter items with mandatory fields (title, URL, Category)
-    const validItems: BookmarkItem[] = items
-      .map((item: any) => {
-        const properties = item.properties || {}
-
-        // Title comes from item.title, not properties
-        let title = item.title || ''
-        // Replace "Untitled" with empty string
-        if (title.trim().toLowerCase() === 'untitled') {
-          title = ''
-        }
-        // Try different property name variations (case-insensitive) for URL and Category
-        const url = properties.URL || properties.url || properties['URL'] || properties['url'] || ''
-        const category =
-          properties.Category ||
-          properties.category ||
-          properties['Category'] ||
-          properties['category'] ||
-          ''
-        const tags =
-          properties.tags || properties.Tags || properties['tags'] || properties['Tags'] || []
-
-        // Only include items with URL and category (title can be empty)
-        if (url && category) {
-          return {
-            id: item.id,
-            title: String(title),
-            url: String(url),
-            category: String(category),
-            tags: Array.isArray(tags) ? tags.map((t: any) => String(t)) : [],
-          }
-        }
-        return null
-      })
-      .filter((item: BookmarkItem | null): item is BookmarkItem => item !== null)
-
-    bookmarks.value = validItems
-
-    // Cache items
-    setCachedData(validItems)
-
-    // Initialize selected category
-    initializeSelectedCategory()
-  } catch (error) {
-    console.error('Error fetching collection items:', error)
-    errorMessage.value = 'Failed to fetch Bookmarks collection items. Please check Settings.'
-    completedApiCalls.value++
-  } finally {
-    isLoading.value = false
-  }
+  errorMessage.value = ''
+  await bookmarksApiStore.initializeBookmarks(bookmarksCollectionId.value, forceRefresh)
+  initializeSelectedCategory()
 }
 
 const refreshBookmarks = async () => {
-  clearCache()
-  await initializeBookmarks(true)
+  if (!bookmarksCollectionId.value) return
+  await bookmarksApiStore.refreshBookmarks(bookmarksCollectionId.value)
 }
 
 const openCollectionInCraft = () => {

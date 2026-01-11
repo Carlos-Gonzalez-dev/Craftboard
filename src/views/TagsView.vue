@@ -1,34 +1,21 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, inject, h, watch } from 'vue'
 import { Clock, RefreshCw, ExternalLink, Plus, X, Search, BarChart3, List } from 'lucide-vue-next'
-import { getApiUrl, openCraftLink, getCacheExpiryMs } from '../utils/craftApi'
+import { openCraftLink } from '../utils/craftApi'
 import { createTagHueMap, createGetTagColor } from '../utils/tagColors'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ViewTabs from '../components/ViewTabs.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
+import { useTagsApiStore, type LogEntry } from '../stores/tagsApi'
 
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
 const setSubheader =
   inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
-interface LogEntry {
-  documentId: string
-  documentTitle: string
-  blockId: string
-  markdown: string
-  date?: string
-  createdAt?: string
-  lastModifiedAt?: string
-  tags: string[]
-  clickableLink?: string
-}
+const tagsApiStore = useTagsApiStore()
 
-const logs = ref<LogEntry[]>([])
-const isLoading = ref(false)
-const error = ref<string | null>(null)
-const totalApiCalls = ref(0)
-const completedApiCalls = ref(0)
+// UI State
 const searchQuery = ref('')
 const selectedTags = ref<Set<string>>(new Set())
 const selectedPeriod = ref<string>('all')
@@ -36,6 +23,13 @@ const chartPeriod = ref<'week' | 'month' | 'year'>('year')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const showAddTagModal = ref(false)
 const newTag = ref('')
+
+// Store computed properties
+const logs = computed(() => tagsApiStore.logs)
+const isLoading = computed(() => tagsApiStore.isLoading)
+const error = computed(() => tagsApiStore.error)
+const totalApiCalls = computed(() => tagsApiStore.totalApiCalls)
+const completedApiCalls = computed(() => tagsApiStore.completedApiCalls)
 
 // View mode with localStorage persistence
 const VIEW_MODE_STORAGE_KEY = 'tags-view-mode'
@@ -50,7 +44,6 @@ watch(viewMode, (newMode) => {
 
 // Load tags from localStorage
 const STORAGE_KEY = 'craftboard-tags'
-const CACHE_PREFIX = 'tags-cache-'
 const savedTags = ref<string[]>([])
 
 const loadTags = () => {
@@ -257,221 +250,9 @@ const toggleSortOrder = () => {
   sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
 }
 
-// Cache functions
-const getCacheKey = () => {
-  const tagsHash = savedTags.value.join('-')
-  return `${CACHE_PREFIX}${tagsHash}`
-}
-
-const getCachedData = () => {
-  try {
-    const cacheKey = getCacheKey()
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { data, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-    const cacheExpiryMs = getCacheExpiryMs()
-
-    if (cacheExpiryMs > 0 && now - timestamp < cacheExpiryMs) {
-      return data
-    }
-
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch (error) {
-    console.error('Error reading cache:', error)
-    return null
-  }
-}
-
-const setCachedData = (entries: LogEntry[]) => {
-  try {
-    const cacheKey = getCacheKey()
-    const cacheData = {
-      data: entries,
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-  } catch (error) {
-    console.error('Error saving cache:', error)
-  }
-}
-
-// Extract tags matching the pattern
-const extractMatchingTags = (markdown: string, pattern: string): string[] => {
-  if (!pattern) {
-    // If no specific tag, extract all tags
-    const regex = /#([\w-]+(?:\/[\w-]+)*)/gi
-    const tags: string[] = []
-    let match
-    while ((match = regex.exec(markdown)) !== null) {
-      const tag = match[1] ? match[1].toLowerCase() : ''
-      if (tag) tags.push(tag)
-    }
-    return [...new Set(tags)]
-  }
-
-  // Extract specific tag and its subtags
-  const tags: string[] = []
-  const regex = new RegExp(`#(${pattern}(?:\\/[\\w-]+)*)`, 'gi')
-  let match
-  while ((match = regex.exec(markdown)) !== null) {
-    const tag = match[1] ? match[1].toLowerCase() : ''
-    if (tag) tags.push(tag)
-  }
-  return [...new Set(tags)]
-}
-
-// Helper to recursively extract blocks with tags from block tree
-const extractBlocksWithTags = (
-  block: any,
-  documentId: string,
-  documentTitle: string,
-  parentPath: string[] = [],
-): LogEntry[] => {
-  const entries: LogEntry[] = []
-  const markdown = block.markdown || ''
-  const tags = extractMatchingTags(markdown, '')
-
-  // Only include blocks that contain at least one of the user's saved tags
-  const matchingTags = tags.filter((tag) => savedTags.value.includes(tag))
-
-  if (matchingTags.length > 0) {
-    entries.push({
-      documentId,
-      documentTitle,
-      blockId: block.id,
-      markdown,
-      createdAt: block.metadata?.createdAt || undefined,
-      lastModifiedAt: block.metadata?.lastModifiedAt || undefined,
-      date: block.metadata?.createdAt,
-      tags: matchingTags,
-      clickableLink: undefined,
-    })
-  }
-
-  // Recursively process children
-  if (block.content && Array.isArray(block.content)) {
-    const newPath =
-      block.type === 'page' && block.markdown
-        ? [...parentPath, block.markdown.replace(/<\/?page>/g, '').trim()]
-        : parentPath
-
-    for (const child of block.content) {
-      entries.push(...extractBlocksWithTags(child, documentId, documentTitle, newPath))
-    }
-  }
-
-  return entries
-}
-
 // Load logs for all saved tags
 const loadLogs = async (forceRefresh = false) => {
-  if (savedTags.value.length === 0) {
-    logs.value = []
-    return
-  }
-
-  // Check cache first if not forcing refresh
-  if (!forceRefresh) {
-    const cachedData = getCachedData()
-    if (cachedData) {
-      logs.value = cachedData
-      return
-    }
-  }
-
-  isLoading.value = true
-  error.value = null
-  logs.value = []
-
-  try {
-    const apiUrl = getApiUrl()
-    if (!apiUrl) {
-      throw new Error('Craft API URL not configured')
-    }
-
-    const token = localStorage.getItem('craft-api-token')
-    if (!token) {
-      throw new Error('Craft API token not configured')
-    }
-
-    // Step 1: Search for documents containing the tags
-    const patterns = savedTags.value.map((tag) => `#${tag}(?:\/[\w-]+)?`).join('|')
-    const regexPattern = patterns || '#[\w-]+(?:\/[\w-]+)?'
-
-    const searchResponse = await fetch(
-      `${apiUrl}/documents/search?regexps=${encodeURIComponent(regexPattern)}&fetchMetadata=true`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      },
-    )
-
-    if (!searchResponse.ok) {
-      throw new Error(`Failed to search documents: ${searchResponse.statusText}`)
-    }
-
-    const searchData = await searchResponse.json()
-    const documents = searchData.items || []
-
-    // Step 2: Fetch blocks for each document with metadata
-    totalApiCalls.value = documents.length
-    completedApiCalls.value = 0
-
-    const logEntries: LogEntry[] = []
-
-    for (const doc of documents) {
-      try {
-        const blocksResponse = await fetch(
-          `${apiUrl}/blocks?id=${encodeURIComponent(doc.documentId)}&fetchMetadata=true`,
-          {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          },
-        )
-
-        completedApiCalls.value++
-
-        if (blocksResponse.ok) {
-          const blockData = await blocksResponse.json()
-          const documentTitle = doc.title || 'Untitled'
-
-          // Extract all blocks with tags from the tree
-          const blockEntries = extractBlocksWithTags(blockData, doc.documentId, documentTitle)
-          logEntries.push(...blockEntries)
-        }
-      } catch (blockError) {
-        console.error(`Error fetching blocks for document ${doc.documentId}:`, blockError)
-        // Continue with other documents even if one fails
-      }
-    }
-
-    // Sort by date (most recent first)
-    logEntries.sort((a, b) => {
-      if (!a.date && !b.date) return 0
-      if (!a.date) return 1
-      if (!b.date) return -1
-      return b.date.localeCompare(a.date)
-    })
-
-    logs.value = logEntries
-
-    // Save to cache
-    setCachedData(logEntries)
-  } catch (err) {
-    console.error('Failed to load logs:', err)
-    error.value = err instanceof Error ? err.message : 'Failed to load logs'
-  } finally {
-    isLoading.value = false
-  }
+  await tagsApiStore.loadLogs(savedTags.value, forceRefresh)
 }
 
 // Format date for display

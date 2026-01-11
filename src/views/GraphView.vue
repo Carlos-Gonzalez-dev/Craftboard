@@ -2,14 +2,10 @@
 import { ref, computed, onMounted, watch, nextTick, onActivated, onUnmounted, inject, h } from 'vue'
 import {
   getApiUrl,
-  fetchDocuments,
-  fetchFolders,
-  listCollections,
   getSpaceId,
   getCraftLinkPreference,
   buildCraftAppLink,
   buildCraftWebLink,
-  getCacheExpiryMs,
 } from '../utils/craftApi'
 import type { CraftDocument, CraftFolder } from '../utils/craftApi'
 import * as d3 from 'd3'
@@ -18,11 +14,15 @@ import { RefreshCw, Maximize2, Move, Settings, X, Network, PanelRightOpen } from
 import ViewSubheader from '../components/ViewSubheader.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
+import { useGraphApiStore } from '../stores/graphApi'
 
 const route = useRoute()
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
-const setSubheader = inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
+const setSubheader =
+  inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
+
+const graphApiStore = useGraphApiStore()
 
 // Check if d3 is available
 let d3Available = true
@@ -36,61 +36,17 @@ try {
   console.warn('D3.js not available. Graph visualization will not work.')
 }
 
-// State
-const documents = ref<CraftDocument[]>([])
-const folders = ref<CraftFolder[]>([])
-const collections = ref<Array<{ id: string; name: string; documentId: string }>>([])
-const isLoading = ref(false)
+// Store computed properties
+const documents = computed(() => graphApiStore.documents)
+const folders = computed(() => graphApiStore.folders)
+const collections = computed(() => graphApiStore.collections)
+const isLoading = computed(() => graphApiStore.isLoading)
+const totalApiCalls = computed(() => graphApiStore.totalApiCalls)
+const completedApiCalls = computed(() => graphApiStore.completedApiCalls)
+
+// UI State
 const error = ref<string | null>(null)
 const lastFetchedAt = ref<Date | null>(null)
-
-// Progress tracking
-const totalApiCalls = ref(0)
-const completedApiCalls = ref(0)
-
-// Cache keys
-const CACHE_PREFIX = 'graph-cache-'
-
-// Cache helpers
-function getCachedData() {
-  try {
-    const cached = localStorage.getItem(CACHE_PREFIX + 'data')
-    const timestamp = localStorage.getItem(CACHE_PREFIX + 'timestamp')
-    if (!cached || !timestamp) return null
-
-    const cacheExpiryMs = getCacheExpiryMs()
-    if (cacheExpiryMs === 0) return null // Caching disabled
-
-    const cacheAge = Date.now() - parseInt(timestamp, 10)
-    if (cacheAge > cacheExpiryMs) {
-      localStorage.removeItem(CACHE_PREFIX + 'data')
-      localStorage.removeItem(CACHE_PREFIX + 'timestamp')
-      return null
-    }
-
-    return JSON.parse(cached)
-  } catch {
-    return null
-  }
-}
-
-function setCachedData(data: {
-  documents: CraftDocument[]
-  folders: CraftFolder[]
-  collections: Array<{ id: string; name: string; documentId: string }>
-}) {
-  try {
-    localStorage.setItem(CACHE_PREFIX + 'data', JSON.stringify(data))
-    localStorage.setItem(CACHE_PREFIX + 'timestamp', String(Date.now()))
-  } catch (e) {
-    console.warn('Failed to cache data:', e)
-  }
-}
-
-function clearCache() {
-  localStorage.removeItem(CACHE_PREFIX + 'data')
-  localStorage.removeItem(CACHE_PREFIX + 'timestamp')
-}
 
 // Filters
 const showDocuments = ref(true)
@@ -125,17 +81,21 @@ const svgRef = ref<SVGSVGElement | null>(null)
 const selectedNode = ref<GraphNode | null>(null)
 
 // Watch showSidebar to delay button appearance until transition completes
-watch(showSidebar, (newValue) => {
-  if (!newValue) {
-    // Wait for sidebar close transition (0.25s) before showing button
-    setTimeout(() => {
-      showOpenButton.value = true
-    }, 250)
-  } else {
-    // Hide button immediately when sidebar opens
-    showOpenButton.value = false
-  }
-}, { immediate: true })
+watch(
+  showSidebar,
+  (newValue) => {
+    if (!newValue) {
+      // Wait for sidebar close transition (0.25s) before showing button
+      setTimeout(() => {
+        showOpenButton.value = true
+      }, 250)
+    } else {
+      // Hide button immediately when sidebar opens
+      showOpenButton.value = false
+    }
+  },
+  { immediate: true },
+)
 
 // Graph types
 interface GraphNode {
@@ -453,113 +413,11 @@ const fetchAllData = async (forceRefresh = false) => {
   const apiUrl = getApiUrl()
   if (!apiUrl) {
     error.value = 'Craft API URL not configured. Please configure it in Settings.'
-    isLoading.value = false
     return
   }
 
-  // No longer need document ID - collections are fetched directly from the space
-
-  // Check cache first if not forcing refresh
-  if (!forceRefresh) {
-    const cached = getCachedData()
-    if (cached) {
-      documents.value = cached.documents
-      folders.value = cached.folders
-      collections.value = cached.collections
-      lastFetchedAt.value = new Date(
-        parseInt(localStorage.getItem(CACHE_PREFIX + 'timestamp') || '0', 10),
-      )
-      isLoading.value = false
-
-      await nextTick()
-      if (visualizationType.value === 'force' && d3Available && graphNodes.value.length > 0) {
-        renderGraph()
-      }
-      return
-    }
-  }
-
-  isLoading.value = true
-  error.value = null
-  completedApiCalls.value = 0
-  totalApiCalls.value = 0
-
   try {
-    // Count total folders (including nested) for progress tracking
-    const countFolders = (folderList: CraftFolder[]): number => {
-      let count = 0
-      for (const folder of folderList) {
-        count++
-        if (folder.folders && folder.folders.length > 0) {
-          count += countFolders(folder.folders)
-        }
-      }
-      return count
-    }
-
-    // First, fetch folders to count them
-    const foldersResult = await fetchFolders().catch(() => ({ items: [] }))
-    folders.value = foldersResult.items
-    
-    // Calculate total API calls: 2 (folders + collections) + number of folders
-    totalApiCalls.value = 2 + countFolders(folders.value)
-    completedApiCalls.value = 1 // Folders fetched
-
-    // Fetch collections
-    const collectionsResult = await listCollections()
-      .then((items) => {
-        completedApiCalls.value++
-        return { items }
-      })
-      .catch(() => {
-        completedApiCalls.value++
-        return { items: [] }
-      })
-
-    collections.value = collectionsResult.items
-
-    const allDocuments: CraftDocument[] = []
-    const specialLocations: Record<string, 'unsorted' | 'trash' | 'templates' | 'daily_notes'> = {
-      unsorted: 'unsorted',
-      trash: 'trash',
-      templates: 'templates',
-      daily_notes: 'daily_notes',
-    }
-
-    async function fetchFolderDocuments(folder: CraftFolder) {
-      try {
-        const location = specialLocations[folder.id]
-        const result = await fetchDocuments(
-          location
-            ? { location, fetchMetadata: true }
-            : { folderId: folder.id, fetchMetadata: true },
-        )
-
-        completedApiCalls.value++
-
-        result.items.forEach((doc) => {
-          allDocuments.push({ ...doc, folderId: folder.id })
-        })
-
-        if (!location && folder.folders && folder.folders.length > 0) {
-          await Promise.all(folder.folders.map((subfolder) => fetchFolderDocuments(subfolder)))
-        }
-      } catch (e) {
-        completedApiCalls.value++
-        console.error(`Error fetching documents for folder ${folder.name}:`, e)
-      }
-    }
-
-    await Promise.all(folders.value.map((folder) => fetchFolderDocuments(folder)))
-    documents.value = allDocuments
-
-    // Cache the data
-    setCachedData({
-      documents: allDocuments,
-      folders: folders.value,
-      collections: collections.value,
-    })
-
+    await graphApiStore.initializeGraph(forceRefresh)
     lastFetchedAt.value = new Date()
 
     // Trigger graph render after data loads
@@ -570,14 +428,18 @@ const fetchAllData = async (forceRefresh = false) => {
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to fetch data'
     console.error('Error fetching data:', e)
-  } finally {
-    isLoading.value = false
   }
 }
 
-const refreshData = () => {
-  clearCache()
-  fetchAllData(true)
+const refreshData = async () => {
+  await graphApiStore.refreshGraph()
+  lastFetchedAt.value = new Date()
+
+  // Trigger graph render after refresh
+  await nextTick()
+  if (visualizationType.value === 'force' && d3Available && graphNodes.value.length > 0) {
+    renderGraph()
+  }
 }
 
 // D3 rendering functions
@@ -599,9 +461,11 @@ function renderGraph() {
 
   const width = svgRef.value.clientWidth || window.innerWidth
   const height = svgRef.value.clientHeight || window.innerHeight
-  
+
   // Get text color from CSS variable
-  const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#0f172a'
+  const textColor =
+    getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() ||
+    '#0f172a'
 
   const svg = d3.select(svgRef.value)
   svg.selectAll('*').remove()
@@ -974,38 +838,56 @@ onMounted(() => {
   if (registerRefresh) {
     registerRefresh(String(route.name), refreshData)
   }
-  
+
   // Register subheader
   if (setSubheader && !error.value) {
     setSubheader({
       right: () => [
-        h(SubheaderButton, { 
-          disabled: !d3Available.value, 
-          title: 'Center view', 
-          onClick: centerGraph 
-        }, {
-          default: () => h(Move, { size: 16 })
-        }),
-        h(SubheaderButton, { 
-          disabled: !d3Available.value, 
-          title: 'Fit all', 
-          onClick: fitAll 
-        }, {
-          default: () => h(Maximize2, { size: 16 })
-        }),
-        h(SubheaderButton, { 
-          title: 'Settings', 
-          onClick: () => { showSidebar.value = true } 
-        }, {
-          default: () => h(Settings, { size: 16 })
-        }),
-        h(SubheaderButton, { 
-          title: 'Refresh', 
-          onClick: refreshData 
-        }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+        h(
+          SubheaderButton,
+          {
+            disabled: !d3Available.value,
+            title: 'Center view',
+            onClick: centerGraph,
+          },
+          {
+            default: () => h(Move, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          {
+            disabled: !d3Available.value,
+            title: 'Fit all',
+            onClick: fitAll,
+          },
+          {
+            default: () => h(Maximize2, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          {
+            title: 'Settings',
+            onClick: () => {
+              showSidebar.value = true
+            },
+          },
+          {
+            default: () => h(Settings, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          {
+            title: 'Refresh',
+            onClick: refreshData,
+          },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   }
 })
@@ -1024,33 +906,51 @@ onActivated(() => {
   if (setSubheader && !error.value) {
     setSubheader({
       right: () => [
-        h(SubheaderButton, { 
-          disabled: !d3Available.value, 
-          title: 'Center view', 
-          onClick: centerGraph 
-        }, {
-          default: () => h(Move, { size: 16 })
-        }),
-        h(SubheaderButton, { 
-          disabled: !d3Available.value, 
-          title: 'Fit all', 
-          onClick: fitAll 
-        }, {
-          default: () => h(Maximize2, { size: 16 })
-        }),
-        h(SubheaderButton, { 
-          title: 'Settings', 
-          onClick: () => { showSidebar.value = true } 
-        }, {
-          default: () => h(Settings, { size: 16 })
-        }),
-        h(SubheaderButton, { 
-          title: 'Refresh', 
-          onClick: refreshData 
-        }, {
-          default: () => h(RefreshCw, { size: 16 })
-        })
-      ]
+        h(
+          SubheaderButton,
+          {
+            disabled: !d3Available.value,
+            title: 'Center view',
+            onClick: centerGraph,
+          },
+          {
+            default: () => h(Move, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          {
+            disabled: !d3Available.value,
+            title: 'Fit all',
+            onClick: fitAll,
+          },
+          {
+            default: () => h(Maximize2, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          {
+            title: 'Settings',
+            onClick: () => {
+              showSidebar.value = true
+            },
+          },
+          {
+            default: () => h(Settings, { size: 16 }),
+          },
+        ),
+        h(
+          SubheaderButton,
+          {
+            title: 'Refresh',
+            onClick: refreshData,
+          },
+          {
+            default: () => h(RefreshCw, { size: 16 }),
+          },
+        ),
+      ],
     })
   }
 })
@@ -1163,70 +1063,70 @@ defineExpose({ centerGraph, fitAll })
             </button>
           </div>
           <div class="sidebar-content">
-          <!-- Filters -->
-          <div class="sidebar-section">
-            <h4 class="section-title">Filters</h4>
-            <div class="filter-group">
-              <label class="filter-checkbox">
-                <input v-model="showDocuments" type="checkbox" />
-                <span>Documents ({{ documents.filter((d) => !d.dailyNoteDate).length }})</span>
-              </label>
-              <label class="filter-checkbox">
-                <input v-model="showFolders" type="checkbox" />
-                <span>Folders ({{ folders.length }})</span>
-              </label>
-              <label class="filter-checkbox">
-                <input v-model="showCollections" type="checkbox" />
-                <span>Collections ({{ collections.length }})</span>
-              </label>
-              <label class="filter-checkbox">
-                <input v-model="showDailyNotes" type="checkbox" />
-                <span>Daily Notes ({{ dailyNotesCount }})</span>
-              </label>
+            <!-- Filters -->
+            <div class="sidebar-section">
+              <h4 class="section-title">Filters</h4>
+              <div class="filter-group">
+                <label class="filter-checkbox">
+                  <input v-model="showDocuments" type="checkbox" />
+                  <span>Documents ({{ documents.filter((d) => !d.dailyNoteDate).length }})</span>
+                </label>
+                <label class="filter-checkbox">
+                  <input v-model="showFolders" type="checkbox" />
+                  <span>Folders ({{ folders.length }})</span>
+                </label>
+                <label class="filter-checkbox">
+                  <input v-model="showCollections" type="checkbox" />
+                  <span>Collections ({{ collections.length }})</span>
+                </label>
+                <label class="filter-checkbox">
+                  <input v-model="showDailyNotes" type="checkbox" />
+                  <span>Daily Notes ({{ dailyNotesCount }})</span>
+                </label>
+              </div>
             </div>
-          </div>
 
-          <!-- Display Options -->
-          <div class="sidebar-section">
-            <h4 class="section-title">Display</h4>
-            <div class="filter-group">
-              <label class="filter-checkbox">
-                <input v-model="showLabels" type="checkbox" />
-                <span>Show Labels</span>
-              </label>
-              <label class="filter-checkbox">
-                <input v-model="showRootNode" type="checkbox" />
-                <span>Show Root Node</span>
-              </label>
-              <label class="filter-checkbox">
-                <input v-model="showOrphanNodes" type="checkbox" />
-                <span>Show Orphan Nodes</span>
-              </label>
+            <!-- Display Options -->
+            <div class="sidebar-section">
+              <h4 class="section-title">Display</h4>
+              <div class="filter-group">
+                <label class="filter-checkbox">
+                  <input v-model="showLabels" type="checkbox" />
+                  <span>Show Labels</span>
+                </label>
+                <label class="filter-checkbox">
+                  <input v-model="showRootNode" type="checkbox" />
+                  <span>Show Root Node</span>
+                </label>
+                <label class="filter-checkbox">
+                  <input v-model="showOrphanNodes" type="checkbox" />
+                  <span>Show Orphan Nodes</span>
+                </label>
+              </div>
             </div>
-          </div>
 
-          <!-- Stats -->
-          <div class="sidebar-section">
-            <h4 class="section-title">Statistics</h4>
-            <div class="stats-group">
-              <div class="stat-item">
-                <span class="stat-label">Visible Nodes:</span>
-                <span class="stat-value">{{ graphNodes.length }}</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Total Nodes:</span>
-                <span class="stat-value">{{ totalNodesCount }}</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Links:</span>
-                <span class="stat-value">{{ graphLinks.length }}</span>
-              </div>
-              <div v-if="lastFetchedAt" class="stat-item">
-                <span class="stat-label">Updated:</span>
-                <span class="stat-value">{{ timeAgo }}</span>
+            <!-- Stats -->
+            <div class="sidebar-section">
+              <h4 class="section-title">Statistics</h4>
+              <div class="stats-group">
+                <div class="stat-item">
+                  <span class="stat-label">Visible Nodes:</span>
+                  <span class="stat-value">{{ graphNodes.length }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Total Nodes:</span>
+                  <span class="stat-value">{{ totalNodesCount }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Links:</span>
+                  <span class="stat-value">{{ graphLinks.length }}</span>
+                </div>
+                <div v-if="lastFetchedAt" class="stat-item">
+                  <span class="stat-label">Updated:</span>
+                  <span class="stat-value">{{ timeAgo }}</span>
+                </div>
               </div>
             </div>
-          </div>
           </div>
         </aside>
       </Transition>
@@ -1568,7 +1468,6 @@ defineExpose({ centerGraph, fitAll })
   width: 100%;
   height: 100%;
 }
-
 
 .sidebar {
   position: relative;

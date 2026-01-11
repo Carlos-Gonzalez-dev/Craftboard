@@ -1,14 +1,22 @@
 <script setup lang="ts">
 defineOptions({
-  name: 'MusicView'
+  name: 'MusicView',
 })
 
 import { ref, computed, onMounted, onUnmounted, watch, h, onActivated, inject } from 'vue'
-import { RefreshCw, Music as MusicIcon, ExternalLink, GripVertical, X, ChevronDown, ChevronUp, Maximize, Minimize } from 'lucide-vue-next'
+import {
+  RefreshCw,
+  Music as MusicIcon,
+  ExternalLink,
+  GripVertical,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Maximize,
+  Minimize,
+} from 'lucide-vue-next'
 import {
   getApiUrl,
-  getApiToken,
-  getCacheExpiryMs,
   getCraftLinkPreference,
   buildCraftAppLink,
   buildCraftWebLink,
@@ -19,12 +27,15 @@ import { useRoute } from 'vue-router'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
+import { useMusicApiStore } from '../stores/musicApi'
 
 const route = useRoute()
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
 const setSubheader =
   inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
+
+const musicApiStore = useMusicApiStore()
 
 // API Configuration
 const apiBaseUrl = ref('')
@@ -35,24 +46,21 @@ const musicCollectionId = ref<string | null>(null)
 const artistCollectionId = ref<string | null>(null)
 const genreCollectionId = ref<string | null>(null)
 
-// Cache keys
-const CACHE_PREFIX = 'music-cache-'
+// Store computed properties
+const music = computed(() => musicApiStore.music)
+const artistsData = computed(() => musicApiStore.artists)
+const genresData = computed(() => musicApiStore.genres)
+const isLoading = computed(() => musicApiStore.isLoading)
+const totalApiCalls = computed(() => musicApiStore.totalApiCalls)
+const completedApiCalls = computed(() => musicApiStore.completedApiCalls)
 
-// State
-const music = ref<any[]>([])
-const artistsData = ref<any[]>([])
-const genresData = ref<any[]>([])
+// UI State
 const selectedPlaylist = ref<any>(null)
 const searchQuery = ref('')
 const selectedGenre = ref('')
 const selectedArtist = ref('')
 const selectedTag = ref('')
 const errorMessage = ref('')
-const isLoading = ref(true)
-
-// Progress tracking
-const totalApiCalls = ref(0)
-const completedApiCalls = ref(0)
 
 // YouTube Player Component
 const YoutubePlayer = {
@@ -388,22 +396,10 @@ const YoutubePlayer = {
 }
 
 // Methods
-const getHeaders = () => {
-  const token = getApiToken()
-  if (!token) {
-    throw new Error('Craft API token not configured')
-  }
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  }
-}
-
 const loadApiUrl = () => {
   apiBaseUrl.value = getApiUrl() || ''
   if (!apiBaseUrl.value) {
     errorMessage.value = 'Craft API URL not configured. Please configure it in Settings.'
-    isLoading.value = false
     return
   }
 
@@ -416,10 +412,7 @@ const initializeMusic = async (forceRefresh = false) => {
     return
   }
 
-  isLoading.value = true
   errorMessage.value = ''
-  completedApiCalls.value = 0
-  totalApiCalls.value = 0
 
   // Load collection IDs from settings
   const playlistsId = localStorage.getItem('collection-id-playlists')
@@ -429,7 +422,6 @@ const initializeMusic = async (forceRefresh = false) => {
   if (!playlistsId || !artistsId || !genresId) {
     errorMessage.value =
       'Collection IDs not configured. Please configure them in Settings > API > Collection IDs.'
-    isLoading.value = false
     return
   }
 
@@ -437,156 +429,22 @@ const initializeMusic = async (forceRefresh = false) => {
   artistCollectionId.value = artistsId
   genreCollectionId.value = genresId
 
-  // Count API calls needed
-  let apiCallCount = 0
-  if (forceRefresh || !getCachedData()) {
-    apiCallCount += 3 // fetchData: music + artists + genres
-  }
-
-  totalApiCalls.value = apiCallCount
-
-  // Fetch data with the collection IDs
-  if (musicCollectionId.value && artistCollectionId.value && genreCollectionId.value) {
-    await fetchData(forceRefresh)
-  }
-}
-
-const getCacheKey = () => {
-  if (!musicCollectionId.value || !artistCollectionId.value || !genreCollectionId.value) return null
-  return `${CACHE_PREFIX}${musicCollectionId.value}-${artistCollectionId.value}-${genreCollectionId.value}`
-}
-
-const getCachedData = () => {
   try {
-    const cacheKey = getCacheKey()
-    if (!cacheKey) return null
-    const cached = localStorage.getItem(cacheKey)
-    if (!cached) return null
-
-    const { data, timestamp } = JSON.parse(cached)
-    const now = Date.now()
-
-    // Check if cache is still valid (less than 24 hours old)
-    const cacheExpiryMs = getCacheExpiryMs()
-    if (cacheExpiryMs > 0 && now - timestamp < cacheExpiryMs) {
-      return data
-    }
-
-    // Cache expired, remove it
-    localStorage.removeItem(cacheKey)
-    return null
-  } catch (error) {
-    console.error('Error reading cache:', error)
-    return null
-  }
-}
-
-const setCachedData = (data: { music: any[]; artists: any[]; genres: any[] }) => {
-  try {
-    const cacheKey = getCacheKey()
-    if (!cacheKey) return
-    const cacheData = {
-      data,
-      timestamp: Date.now(),
-    }
-    localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-  } catch (error) {
-    console.error('Error saving cache:', error)
-  }
-}
-
-const clearCache = () => {
-  try {
-    const cacheKey = getCacheKey()
-    if (cacheKey) {
-      localStorage.removeItem(cacheKey)
-    }
-  } catch (error) {
-    console.error('Error clearing cache:', error)
-  }
-}
-
-const fetchData = async (forceRefresh = false) => {
-  if (
-    !apiBaseUrl.value ||
-    !musicCollectionId.value ||
-    !artistCollectionId.value ||
-    !genreCollectionId.value
-  ) {
-    isLoading.value = false
-    return
-  }
-
-  // Check cache first (unless forcing refresh)
-  if (!forceRefresh) {
-    const cached = getCachedData()
-    if (cached) {
-      music.value = cached.music || []
-      artistsData.value = cached.artists || []
-      genresData.value = cached.genres || []
-      isLoading.value = false
-      return
-    }
-  } else {
-    clearCache()
-  }
-
-  isLoading.value = true
-  errorMessage.value = ''
-
-  try {
-    const [musicRes, artistsRes, genresRes] = await Promise.all([
-      fetch(`${apiBaseUrl.value}/collections/${musicCollectionId.value}/items?maxDepth=-1`, {
-        headers: getHeaders(),
-      }),
-      fetch(`${apiBaseUrl.value}/collections/${artistCollectionId.value}/items?maxDepth=-1`, {
-        headers: getHeaders(),
-      }),
-      fetch(`${apiBaseUrl.value}/collections/${genreCollectionId.value}/items?maxDepth=-1`, {
-        headers: getHeaders(),
-      }),
-    ])
-
-    completedApiCalls.value += 3 // All 3 API calls completed
-
-    if (!musicRes.ok || !artistsRes.ok || !genresRes.ok) {
-      throw new Error('Failed to fetch data from the server')
-    }
-
-    const [musicData, artistsDataRes, genresDataRes] = await Promise.all([
-      musicRes.json(),
-      artistsRes.json(),
-      genresRes.json(),
-    ])
-
-    const musicItems = musicData.items || []
-    const artistsItems = artistsDataRes.items || []
-    const genresItems = genresDataRes.items || []
-
-    music.value = musicItems
-    artistsData.value = artistsItems
-    genresData.value = genresItems
-
-    // Cache the data
-    setCachedData({
-      music: musicItems,
-      artists: artistsItems,
-      genres: genresItems,
-    })
+    await musicApiStore.initializeMusic(playlistsId, artistsId, genresId, forceRefresh)
   } catch (error) {
     console.error('Error loading playlists:', error)
     errorMessage.value =
       'Oops! Unable to load playlists. Please check your connection and try again.'
-    completedApiCalls.value += 3 // Count as completed even on error
-  } finally {
-    isLoading.value = false
   }
 }
 
-const refreshData = () => {
-  // Clear cache and force refresh
-  clearCache()
-  initializeMusic(true) // Force refresh everything
+const refreshData = async () => {
+  if (!musicCollectionId.value || !artistCollectionId.value || !genreCollectionId.value) return
+  await musicApiStore.refreshMusic(
+    musicCollectionId.value,
+    artistCollectionId.value,
+    genreCollectionId.value,
+  )
 }
 
 const openCollectionInCraft = () => {
@@ -649,7 +507,7 @@ const positionBeforeCollapse = ref({ x: 0, y: 0 })
 const stateBeforeFullscreen = ref({
   position: { x: 0, y: 0 },
   size: { width: 350, height: 250 },
-  moved: false
+  moved: false,
 })
 const playerSize = ref({ width: 350, height: 250 })
 const isDragging = ref(false)
@@ -676,7 +534,7 @@ watch(
       }
     }
   },
-  { deep: true }
+  { deep: true },
 )
 
 const toggleCollapse = () => {
@@ -696,7 +554,7 @@ const toggleFullscreen = () => {
     stateBeforeFullscreen.value = {
       position: { ...playerPosition.value },
       size: { ...playerSize.value },
-      moved: userHasMoved.value
+      moved: userHasMoved.value,
     }
     // Set fullscreen dimensions
     playerPosition.value = { x: 0, y: 0 }
@@ -716,7 +574,7 @@ const startDrag = (e: MouseEvent) => {
   isDragging.value = true
   dragStart.value = {
     x: e.clientX - playerPosition.value.x,
-    y: e.clientY - playerPosition.value.y
+    y: e.clientY - playerPosition.value.y,
   }
   userHasMoved.value = true
 }
@@ -725,7 +583,7 @@ const onDrag = (e: MouseEvent) => {
   if (!isDragging.value) return
   playerPosition.value = {
     x: e.clientX - dragStart.value.x,
-    y: e.clientY - dragStart.value.y
+    y: e.clientY - dragStart.value.y,
   }
 }
 
@@ -738,7 +596,7 @@ const startResize = (e: MouseEvent) => {
   isResizing.value = true
   dragStart.value = {
     x: e.clientX,
-    y: e.clientY
+    y: e.clientY,
   }
 }
 
@@ -748,7 +606,7 @@ const onResize = (e: MouseEvent) => {
   const deltaY = e.clientY - dragStart.value.y
   playerSize.value = {
     width: Math.max(300, playerSize.value.width + deltaX),
-    height: Math.max(200, playerSize.value.height + deltaY)
+    height: Math.max(200, playerSize.value.height + deltaY),
   }
   dragStart.value = { x: e.clientX, y: e.clientY }
 }
@@ -756,8 +614,6 @@ const onResize = (e: MouseEvent) => {
 const stopResize = () => {
   isResizing.value = false
 }
-
-
 
 // Add global mouse event listeners
 onMounted(() => {
@@ -1115,20 +971,22 @@ watch(
         <!-- Player -->
         <div class="player-section">
           <Teleport to="#global-music-player">
-            <div 
-              v-if="selectedPlaylist" 
+            <div
+              v-if="selectedPlaylist"
               class="global-player-wrapper"
-              :class="{ 
+              :class="{
                 'is-collapsed': isCollapsed,
                 'is-dragging': isDragging,
                 'is-resizing': isResizing,
                 'is-fullscreen': isFullscreen,
-                'user-positioned': userHasMoved
+                'user-positioned': userHasMoved,
               }"
               :style="{
-                transform: userHasMoved ? `translate(${playerPosition.x}px, ${playerPosition.y}px)` : undefined,
+                transform: userHasMoved
+                  ? `translate(${playerPosition.x}px, ${playerPosition.y}px)`
+                  : undefined,
                 width: !isCollapsed ? `${playerSize.width}px` : undefined,
-                height: !isCollapsed ? `${playerSize.height}px` : undefined
+                height: !isCollapsed ? `${playerSize.height}px` : undefined,
               }"
             >
               <div class="floating-player-header">
@@ -1136,49 +994,52 @@ watch(
                   <GripVertical :size="14" />
                 </div>
                 <div class="floating-player-info">
-                  <img 
-                    v-if="currentArtistImage" 
-                    :src="currentArtistImage" 
+                  <img
+                    v-if="currentArtistImage"
+                    :src="currentArtistImage"
                     :alt="selectedPlaylist.properties?.artist?.relations?.[0]?.title"
                     class="floating-artist-image"
                   />
                   <MusicIcon v-else :size="16" class="floating-icon" />
                   <div class="floating-text">
                     <div class="floating-title">{{ selectedPlaylist.title }}</div>
-                    <div class="floating-artist" v-if="selectedPlaylist.properties?.artist?.relations?.[0]?.title">
+                    <div
+                      class="floating-artist"
+                      v-if="selectedPlaylist.properties?.artist?.relations?.[0]?.title"
+                    >
                       {{ selectedPlaylist.properties.artist.relations[0].title }}
                     </div>
                   </div>
                 </div>
                 <div class="header-buttons">
-                  <button 
-                    @click.stop="toggleFullscreen" 
+                  <button
+                    @click.stop="toggleFullscreen"
                     class="header-button"
                     :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'"
                   >
                     <Minimize v-if="isFullscreen" :size="14" />
                     <Maximize v-else :size="14" />
                   </button>
-                  <button 
+                  <button
                     v-if="!isFullscreen"
-                    @click.stop="toggleCollapse" 
+                    @click.stop="toggleCollapse"
                     class="header-button"
                     :title="isCollapsed ? 'Expand player' : 'Collapse player'"
                   >
                     <ChevronUp v-if="isCollapsed" :size="14" />
                     <ChevronDown v-else :size="14" />
                   </button>
-                  <button 
+                  <button
                     v-if="!isFullscreen"
-                    @click.stop="navigateToMusic" 
+                    @click.stop="navigateToMusic"
                     class="header-button"
                     title="Go to Music view"
                   >
                     <ExternalLink :size="14" />
                   </button>
-                  <button 
+                  <button
                     v-if="!isFullscreen"
-                    @click.stop="selectedPlaylist = null" 
+                    @click.stop="selectedPlaylist = null"
                     class="header-button"
                     title="Close player"
                   >
@@ -1193,16 +1054,16 @@ watch(
                   :key="selectedPlaylist.id"
                 />
               </div>
-              <div 
-                v-if="!isCollapsed" 
-                class="resize-handle"
-                @mousedown="startResize"
-              ></div>
+              <div v-if="!isCollapsed" class="resize-handle" @mousedown="startResize"></div>
             </div>
           </Teleport>
 
           <div class="player-content">
-            <div v-if="selectedPlaylist" class="player-display-wrapper" id="music-view-player-target">
+            <div
+              v-if="selectedPlaylist"
+              class="player-display-wrapper"
+              id="music-view-player-target"
+            >
               <!-- Player is rendered here via teleport from global container -->
             </div>
             <div v-else class="player-empty">
@@ -1935,7 +1796,8 @@ watch(
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {

@@ -1,0 +1,208 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { getCollectionItems } from '../utils/craftApi'
+import { fetchRSSFeed, type RSSFeed } from '../utils/rssParser'
+import { useApiCache } from '../composables/useApiCache'
+
+export interface RSSCollectionItem {
+  id: string
+  title: string
+  url: string
+  category: string
+  tags?: string[]
+}
+
+export const useRSSApiStore = defineStore('rssApi', () => {
+  // State
+  const rssItems = ref<RSSCollectionItem[]>([])
+  const rssFeeds = ref<Map<string, RSSFeed>>(new Map())
+  const loadingFeeds = ref<Set<string>>(new Set())
+  const isLoading = ref(false)
+  const error = ref<string | null>(null)
+  const totalApiCalls = ref(0)
+  const completedApiCalls = ref(0)
+
+  // Cache composable
+  const cache = useApiCache('rss-cache-')
+
+  /**
+   * Fetch collection items from API
+   */
+  const fetchCollectionItems = async (collectionId: string): Promise<RSSCollectionItem[]> => {
+    try {
+      const items = await getCollectionItems(collectionId)
+      completedApiCalls.value++
+
+      // Filter items with mandatory fields (title, URL, Category)
+      const validItems: RSSCollectionItem[] = items
+        .map((item: any) => {
+          const properties = item.properties || {}
+
+          // Title comes from item.title, not properties
+          let title = item.title || ''
+          // Replace "Untitled" with empty string
+          if (title.trim().toLowerCase() === 'untitled') {
+            title = ''
+          }
+          // Try different property name variations (case-insensitive)
+          const url =
+            properties.URL || properties.url || properties['URL'] || properties['url'] || ''
+          const category =
+            properties.Category ||
+            properties.category ||
+            properties['Category'] ||
+            properties['category'] ||
+            ''
+          const tags =
+            properties.tags || properties.Tags || properties['tags'] || properties['Tags'] || []
+
+          // Only include items with mandatory fields (title can be empty, but URL and category are required)
+          if (url && category) {
+            return {
+              id: item.id,
+              title: String(title),
+              url: String(url),
+              category: String(category),
+              tags: Array.isArray(tags) ? tags.map((t: any) => String(t)) : [],
+            }
+          }
+          return null
+        })
+        .filter((item: RSSCollectionItem | null): item is RSSCollectionItem => item !== null)
+
+      rssItems.value = validItems
+      return validItems
+    } catch (err) {
+      console.error('Error fetching collection items:', err)
+      error.value = err instanceof Error ? err.message : 'Failed to fetch RSS collection items'
+      completedApiCalls.value++
+      throw err
+    }
+  }
+
+  /**
+   * Fetch a single RSS feed
+   */
+  const fetchFeedForItem = async (item: RSSCollectionItem, forceRefresh = false): Promise<void> => {
+    // Skip if already loading (unless forcing refresh)
+    if (!forceRefresh && (rssFeeds.value.has(item.id) || loadingFeeds.value.has(item.id))) {
+      return
+    }
+
+    // Clear existing feed if forcing refresh
+    if (forceRefresh) {
+      rssFeeds.value.delete(item.id)
+    }
+
+    loadingFeeds.value.add(item.id)
+
+    try {
+      const feed = await fetchRSSFeed(item.url)
+
+      if (feed) {
+        rssFeeds.value.set(item.id, feed)
+      } else {
+        console.warn(`Failed to fetch or parse feed for ${item.title}`)
+      }
+    } catch (err) {
+      console.error(`Error fetching RSS feed for ${item.title}:`, err)
+    } finally {
+      loadingFeeds.value.delete(item.id)
+    }
+  }
+
+  /**
+   * Fetch all feeds for current items
+   */
+  const fetchAllFeeds = async (): Promise<void> => {
+    const feedPromises = rssItems.value.map((item) => fetchFeedForItem(item))
+    await Promise.all(feedPromises)
+  }
+
+  /**
+   * Initialize RSS data (load items and feeds)
+   */
+  const initializeRSS = async (collectionId: string, forceRefresh = false): Promise<void> => {
+    if (!collectionId) {
+      error.value = 'RSS collection ID not configured'
+      return
+    }
+
+    isLoading.value = true
+    error.value = null
+    rssItems.value = []
+    rssFeeds.value.clear()
+
+    try {
+      // Check cache first
+      if (!forceRefresh) {
+        const cached = cache.getCachedData<{
+          items: RSSCollectionItem[]
+          feeds: Record<string, RSSFeed>
+        }>(collectionId)
+        if (cached) {
+          rssItems.value = cached.items
+          rssFeeds.value = new Map(Object.entries(cached.feeds || {}))
+          isLoading.value = false
+          // Still fetch feeds in background
+          await fetchAllFeeds()
+          return
+        }
+      } else {
+        cache.clearCache(collectionId)
+      }
+
+      // Fetch collection items
+      totalApiCalls.value = 1
+      completedApiCalls.value = 0
+
+      const items = await fetchCollectionItems(collectionId)
+      rssItems.value = items
+
+      // Cache items
+      cache.setCachedData(collectionId, { items, feeds: Object.fromEntries(rssFeeds.value) })
+
+      // Fetch RSS feeds
+      await fetchAllFeeds()
+    } catch (err) {
+      console.error('Failed to initialize RSS:', err)
+      error.value = err instanceof Error ? err.message : 'Failed to load RSS feeds'
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * Refresh RSS data (force fetch from API)
+   */
+  const refreshRSS = async (collectionId: string): Promise<void> => {
+    return initializeRSS(collectionId, true)
+  }
+
+  /**
+   * Refresh a single feed
+   */
+  const refreshFeed = async (item: RSSCollectionItem): Promise<void> => {
+    await fetchFeedForItem(item, true)
+  }
+
+  return {
+    // State
+    rssItems: computed(() => rssItems.value),
+    rssFeeds: computed(() => rssFeeds.value),
+    loadingFeeds: computed(() => loadingFeeds.value),
+    isLoading: computed(() => isLoading.value),
+    error: computed(() => error.value),
+    totalApiCalls: computed(() => totalApiCalls.value),
+    completedApiCalls: computed(() => completedApiCalls.value),
+
+    // Methods
+    initializeRSS,
+    refreshRSS,
+    refreshFeed,
+    fetchAllFeeds,
+    fetchFeedForItem,
+    clearCache: (collectionId: string) => cache.clearCache(collectionId),
+    clearAllCache: () => cache.clearAllCache(),
+  }
+})
