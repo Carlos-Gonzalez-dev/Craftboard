@@ -85,9 +85,10 @@ const fetchFeed = async (item: any, forceRefresh = false) => {
   error.value = null
 
   // Check if feed is already loaded in store
-  if (!forceRefresh && rssFeeds.value[item.id]) {
-    rssFeed.value = rssFeeds.value[item.id]
-    const displayTitle = rssFeed.value.title || item.title || getDomain(item.url)
+  const cachedFeed = rssFeeds.value[item.id]
+  if (!forceRefresh && cachedFeed) {
+    rssFeed.value = cachedFeed
+    const displayTitle = cachedFeed.title || item.title || getDomain(item.url)
     emit('update:title', displayTitle)
     return
   }
@@ -95,7 +96,7 @@ const fetchFeed = async (item: any, forceRefresh = false) => {
   isLoadingFeed.value = true
 
   try {
-    await rssApiStore.fetchFeedForItem(item.id, item.url)
+    await rssApiStore.fetchFeedForItem(item, forceRefresh)
     const feed = rssFeeds.value[item.id]
     if (feed) {
       rssFeed.value = feed

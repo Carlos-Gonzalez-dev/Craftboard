@@ -15,12 +15,13 @@ export interface RSSCollectionItem {
 export const useRSSApiStore = defineStore('rssApi', () => {
   // State
   const rssItems = ref<RSSCollectionItem[]>([])
-  const rssFeeds = ref<Map<string, RSSFeed>>(new Map())
+  const rssFeeds = ref<Record<string, RSSFeed>>({})
   const loadingFeeds = ref<Set<string>>(new Set())
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   const totalApiCalls = ref(0)
   const completedApiCalls = ref(0)
+  const currentCollectionId = ref<string | null>(null)
 
   // Cache composable
   const cache = useApiCache('rss-cache-')
@@ -34,41 +35,39 @@ export const useRSSApiStore = defineStore('rssApi', () => {
       completedApiCalls.value++
 
       // Filter items with mandatory fields (title, URL, Category)
-      const validItems: RSSCollectionItem[] = items
-        .map((item: any) => {
-          const properties = item.properties || {}
+      const validItems: RSSCollectionItem[] = []
+      for (const item of items) {
+        const properties = item.properties || {}
 
-          // Title comes from item.title, not properties
-          let title = item.title || ''
-          // Replace "Untitled" with empty string
-          if (title.trim().toLowerCase() === 'untitled') {
-            title = ''
-          }
-          // Try different property name variations (case-insensitive)
-          const url =
-            properties.URL || properties.url || properties['URL'] || properties['url'] || ''
-          const category =
-            properties.Category ||
-            properties.category ||
-            properties['Category'] ||
-            properties['category'] ||
-            ''
-          const tags =
-            properties.tags || properties.Tags || properties['tags'] || properties['Tags'] || []
+        // Title comes from item.title, not properties
+        let title = item.title || ''
+        // Replace "Untitled" with empty string
+        if (title.trim().toLowerCase() === 'untitled') {
+          title = ''
+        }
+        // Try different property name variations (case-insensitive)
+        const url =
+          properties.URL || properties.url || properties['URL'] || properties['url'] || ''
+        const category =
+          properties.Category ||
+          properties.category ||
+          properties['Category'] ||
+          properties['category'] ||
+          ''
+        const tags =
+          properties.tags || properties.Tags || properties['tags'] || properties['Tags'] || []
 
-          // Only include items with mandatory fields (title can be empty, but URL and category are required)
-          if (url && category) {
-            return {
-              id: item.id,
-              title: String(title),
-              url: String(url),
-              category: String(category),
-              tags: Array.isArray(tags) ? tags.map((t: any) => String(t)) : [],
-            }
-          }
-          return null
-        })
-        .filter((item: RSSCollectionItem | null): item is RSSCollectionItem => item !== null)
+        // Only include items with mandatory fields (title can be empty, but URL and category are required)
+        if (url && category) {
+          validItems.push({
+            id: item.id,
+            title: String(title),
+            url: String(url),
+            category: String(category),
+            tags: Array.isArray(tags) ? tags.map((t: any) => String(t)) : [],
+          })
+        }
+      }
 
       rssItems.value = validItems
       return validItems
@@ -81,17 +80,29 @@ export const useRSSApiStore = defineStore('rssApi', () => {
   }
 
   /**
+   * Save feeds to cache
+   */
+  const saveFeedsToCache = () => {
+    if (currentCollectionId.value) {
+      cache.setCachedData(currentCollectionId.value, {
+        items: rssItems.value,
+        feeds: rssFeeds.value,
+      })
+    }
+  }
+
+  /**
    * Fetch a single RSS feed
    */
   const fetchFeedForItem = async (item: RSSCollectionItem, forceRefresh = false): Promise<void> => {
     // Skip if already loading (unless forcing refresh)
-    if (!forceRefresh && (rssFeeds.value.has(item.id) || loadingFeeds.value.has(item.id))) {
+    if (!forceRefresh && (rssFeeds.value[item.id] || loadingFeeds.value.has(item.id))) {
       return
     }
 
     // Clear existing feed if forcing refresh
     if (forceRefresh) {
-      rssFeeds.value.delete(item.id)
+      delete rssFeeds.value[item.id]
     }
 
     loadingFeeds.value.add(item.id)
@@ -100,7 +111,9 @@ export const useRSSApiStore = defineStore('rssApi', () => {
       const feed = await fetchRSSFeed(item.url)
 
       if (feed) {
-        rssFeeds.value.set(item.id, feed)
+        rssFeeds.value[item.id] = feed
+        // Update cache with new feed
+        saveFeedsToCache()
       } else {
         console.warn(`Failed to fetch or parse feed for ${item.title}`)
       }
@@ -128,10 +141,9 @@ export const useRSSApiStore = defineStore('rssApi', () => {
       return
     }
 
+    currentCollectionId.value = collectionId
     isLoading.value = true
     error.value = null
-    rssItems.value = []
-    rssFeeds.value.clear()
 
     try {
       // Check cache first
@@ -140,17 +152,20 @@ export const useRSSApiStore = defineStore('rssApi', () => {
           items: RSSCollectionItem[]
           feeds: Record<string, RSSFeed>
         }>(collectionId)
-        if (cached) {
+        if (cached && Array.isArray(cached.items)) {
           rssItems.value = cached.items
-          rssFeeds.value = new Map(Object.entries(cached.feeds || {}))
+          rssFeeds.value = cached.feeds || {}
           isLoading.value = false
-          // Still fetch feeds in background
-          await fetchAllFeeds()
+          // Don't fetch feeds again - use cached data
           return
         }
       } else {
         cache.clearCache(collectionId)
       }
+
+      // Reset state for fresh fetch
+      rssItems.value = []
+      rssFeeds.value = {}
 
       // Fetch collection items
       totalApiCalls.value = 1
@@ -159,8 +174,8 @@ export const useRSSApiStore = defineStore('rssApi', () => {
       const items = await fetchCollectionItems(collectionId)
       rssItems.value = items
 
-      // Cache items
-      cache.setCachedData(collectionId, { items, feeds: Object.fromEntries(rssFeeds.value) })
+      // Cache items (feeds will be cached as they are fetched)
+      saveFeedsToCache()
 
       // Fetch RSS feeds
       await fetchAllFeeds()

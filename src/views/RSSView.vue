@@ -101,13 +101,13 @@ const initializeSelectedCategory = () => {
 
 // Helper to get feed items safely
 const getFeedItems = (itemId: string) => {
-  const feed = rssFeeds.value.get(itemId)
+  const feed = rssFeeds.value[itemId]
   return feed?.items || []
 }
 
 // Helper to get display title - prefer RSS feed title, fallback to collection item title
 const getDisplayTitle = (item: RSSCollectionItem) => {
-  const feed = rssFeeds.value.get(item.id)
+  const feed = rssFeeds.value[item.id]
   if (feed && feed.title && feed.title.trim()) {
     return feed.title
   }
@@ -387,7 +387,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
                     </div>
                     <div class="feed-header-actions">
                       <button
-                        @click="fetchFeedForItem(item, true)"
+                        @click="rssApiStore.fetchFeedForItem(item, true)"
                         class="feed-refresh-button"
                         :disabled="loadingFeeds.has(item.id)"
                         title="Refresh feed"
@@ -415,7 +415,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
                     <span>Loading feed...</span>
                   </div>
 
-                  <div v-else-if="rssFeeds.has(item.id)" class="feed-items">
+                  <div v-else-if="rssFeeds[item.id]" class="feed-items">
                     <template v-if="getFeedItems(item.id).length > 0">
                       <a
                         v-for="feedItem in getFeedItems(item.id).slice(0, 5)"
@@ -450,7 +450,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
 
                   <div v-else class="feed-error">
                     <span>Failed to load feed</span>
-                    <button @click="fetchFeedForItem(item, true)" class="retry-button">
+                    <button @click="rssApiStore.fetchFeedForItem(item, true)" class="retry-button">
                       Retry
                     </button>
                   </div>
