@@ -392,7 +392,12 @@ onUnmounted(() => {
       <button v-else @click="pauseTimer" class="control-button pause-button" title="Pause">
         <Pause :size="18" />
       </button>
-      <button @click="resetTimer" class="control-button reset-button" title="Reset" :disabled="isRunning">
+      <button
+        @click="resetTimer"
+        class="control-button reset-button"
+        title="Reset"
+        :disabled="isRunning"
+      >
         <RotateCcw :size="18" />
       </button>
     </div>

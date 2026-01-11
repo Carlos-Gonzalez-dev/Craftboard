@@ -5,8 +5,8 @@ import { listCollections, setApiToken, getApiToken } from '../../utils/craftApi'
 import type { Collection } from '../../utils/craftApi'
 
 const emit = defineEmits<{
-  'select': [collectionId: string, collectionName: string]
-  'close': []
+  select: [collectionId: string, collectionName: string]
+  close: []
 }>()
 
 const collections = ref<Collection[]>([])
@@ -31,7 +31,7 @@ const handleApiTokenSubmit = () => {
     error.value = 'API token is required'
     return
   }
-  
+
   setApiToken(apiToken.value.trim())
   step.value = 'select'
   loadCollections()
@@ -54,11 +54,10 @@ const filteredCollections = () => {
   if (!searchQuery.value.trim()) {
     return collections.value
   }
-  
+
   const query = searchQuery.value.toLowerCase()
-  return collections.value.filter(c => 
-    c.name.toLowerCase().includes(query) ||
-    c.id.toLowerCase().includes(query)
+  return collections.value.filter(
+    (c) => c.name.toLowerCase().includes(query) || c.id.toLowerCase().includes(query),
   )
 }
 
@@ -106,9 +105,7 @@ const resetToken = () => {
             {{ error }}
           </div>
 
-          <button @click="handleApiTokenSubmit" class="primary-btn">
-            Connect to Craft
-          </button>
+          <button @click="handleApiTokenSubmit" class="primary-btn">Connect to Craft</button>
         </div>
       </div>
 
@@ -149,7 +146,9 @@ const resetToken = () => {
           >
             <div class="collection-name">{{ collection.name }}</div>
             <div class="collection-meta">
-              <span class="item-count">{{ collection.itemCount }} item{{ collection.itemCount !== 1 ? 's' : '' }}</span>
+              <span class="item-count"
+                >{{ collection.itemCount }} item{{ collection.itemCount !== 1 ? 's' : '' }}</span
+              >
               <span class="document-id">{{ collection.documentId }}</span>
             </div>
           </div>

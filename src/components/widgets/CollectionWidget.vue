@@ -602,175 +602,175 @@ const isEmail = (value: string): boolean => {
       <!-- Filter Form View - only show when not loading/error and has items -->
       <template v-if="!loading && !error && items.length > 0">
         <div v-if="isFiltering" class="filter-form-view">
-        <div class="filter-form">
-          <h3 class="filter-form-title">Filter Collection</h3>
+          <div class="filter-form">
+            <h3 class="filter-form-title">Filter Collection</h3>
 
-          <!-- Search -->
-          <div class="filter-form-group">
-            <label class="filter-form-label">Search</label>
-            <input
-              v-model="searchText"
-              class="filter-form-input"
-              type="search"
-              placeholder="Search items..."
-              :aria-label="'Search ' + (selectedCollection?.name || 'collection')"
-            />
-          </div>
+            <!-- Search -->
+            <div class="filter-form-group">
+              <label class="filter-form-label">Search</label>
+              <input
+                v-model="searchText"
+                class="filter-form-input"
+                type="search"
+                placeholder="Search items..."
+                :aria-label="'Search ' + (selectedCollection?.name || 'collection')"
+              />
+            </div>
 
-          <!-- Column Filters -->
-          <div v-for="prop in filterableProps" :key="prop.key" class="filter-form-group">
-            <label class="filter-form-label">{{ prop.name }}</label>
-            <select
-              v-model="columnFilters[prop.key]"
-              class="filter-form-select"
-              :aria-label="'Filter by ' + prop.name"
-            >
-              <option value="__ALL__">All {{ prop.name }}</option>
-              <option v-for="opt in filterOptions[prop.key]" :key="opt" :value="opt">
-                {{
-                  (prop.type || '').toLowerCase() === 'boolean' ||
-                  (prop.type || '').toLowerCase() === 'checkbox'
-                    ? opt === 'true'
-                      ? 'Yes'
-                      : 'No'
-                    : opt
-                }}
-              </option>
-            </select>
-          </div>
+            <!-- Column Filters -->
+            <div v-for="prop in filterableProps" :key="prop.key" class="filter-form-group">
+              <label class="filter-form-label">{{ prop.name }}</label>
+              <select
+                v-model="columnFilters[prop.key]"
+                class="filter-form-select"
+                :aria-label="'Filter by ' + prop.name"
+              >
+                <option value="__ALL__">All {{ prop.name }}</option>
+                <option v-for="opt in filterOptions[prop.key]" :key="opt" :value="opt">
+                  {{
+                    (prop.type || '').toLowerCase() === 'boolean' ||
+                    (prop.type || '').toLowerCase() === 'checkbox'
+                      ? opt === 'true'
+                        ? 'Yes'
+                        : 'No'
+                      : opt
+                  }}
+                </option>
+              </select>
+            </div>
 
-          <!-- Sort -->
-          <div class="filter-form-group">
-            <label class="filter-form-label">Sort By</label>
-            <select v-model="sortBy" class="filter-form-select" aria-label="Sort by">
-              <option value="">None</option>
-              <option value="title">Title</option>
-              <option v-for="prop in schema?.properties" :key="prop.key" :value="prop.key">
-                {{ prop.name }}
-              </option>
-            </select>
-          </div>
+            <!-- Sort -->
+            <div class="filter-form-group">
+              <label class="filter-form-label">Sort By</label>
+              <select v-model="sortBy" class="filter-form-select" aria-label="Sort by">
+                <option value="">None</option>
+                <option value="title">Title</option>
+                <option v-for="prop in schema?.properties" :key="prop.key" :value="prop.key">
+                  {{ prop.name }}
+                </option>
+              </select>
+            </div>
 
-          <!-- Sort Direction -->
-          <div v-if="sortBy" class="filter-form-group">
-            <label class="filter-form-label">Sort Direction</label>
-            <select v-model="sortDir" class="filter-form-select" aria-label="Sort direction">
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
-            </select>
-          </div>
+            <!-- Sort Direction -->
+            <div v-if="sortBy" class="filter-form-group">
+              <label class="filter-form-label">Sort Direction</label>
+              <select v-model="sortDir" class="filter-form-select" aria-label="Sort direction">
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </div>
 
-          <!-- Apply Button -->
-          <div class="filter-form-actions">
-            <button @click="applyFilters" class="filter-apply-button">Apply Filters</button>
-            <button @click="clearAllFilters" class="filter-clear-button">Clear All</button>
-            <button @click="cancelFilters" class="filter-cancel-button">Cancel</button>
+            <!-- Apply Button -->
+            <div class="filter-form-actions">
+              <button @click="applyFilters" class="filter-apply-button">Apply Filters</button>
+              <button @click="clearAllFilters" class="filter-clear-button">Clear All</button>
+              <button @click="cancelFilters" class="filter-cancel-button">Cancel</button>
+            </div>
           </div>
         </div>
-      </div>
 
         <!-- Collection Table View -->
         <div v-else-if="viewMode === 'table'" class="collection-table-wrapper">
-        <table class="collection-table">
-          <thead>
-            <tr>
-              <th
-                class="title-header"
-                @click="setSort('title')"
-                :class="{
-                  sortable: true,
-                  sorted: sortBy === 'title',
-                  desc: sortDir === 'desc' && sortBy === 'title',
-                }"
-              >
-                Title
-                <span v-if="sortBy === 'title'">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
-              </th>
-              <th
-                v-for="prop in schema?.properties"
-                :key="prop.key"
-                @click="setSort(prop.key)"
-                :class="{
-                  sortable: true,
-                  sorted: sortBy === prop.key,
-                  desc: sortDir === 'desc' && sortBy === prop.key,
-                }"
-                :title="`${prop.description || prop.name}\nType: ${prop.type}`"
-              >
-                {{ prop.name }}
-                <span v-if="sortBy === prop.key">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in filteredItems" :key="item.id" class="table-row">
-              <td class="title-cell" :title="item.title" @click="openItemInCraft(item.id)">
-                {{ item.title }}
-              </td>
-              <td
-                v-for="prop in schema?.properties"
-                :key="prop.key"
-                class="property-cell"
-                :title="`${prop.name}: ${renderPropertyValue(item.properties?.[prop.key], prop.type)}`"
-              >
-                <template v-if="isUrlProperty(prop) && item.properties?.[prop.key]">
-                  <a
-                    :href="formatUrl(item.properties[prop.key])"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="property-link"
-                    @click.stop
-                  >
-                    {{ renderPropertyValue(item.properties[prop.key], prop.type) }}
-                  </a>
-                </template>
-                <template
-                  v-else-if="
-                    (isEmailProperty(prop) || isEmail(item.properties?.[prop.key])) &&
-                    item.properties?.[prop.key]
-                  "
+          <table class="collection-table">
+            <thead>
+              <tr>
+                <th
+                  class="title-header"
+                  @click="setSort('title')"
+                  :class="{
+                    sortable: true,
+                    sorted: sortBy === 'title',
+                    desc: sortDir === 'desc' && sortBy === 'title',
+                  }"
                 >
-                  <a
-                    :href="`mailto:${item.properties[prop.key]}`"
-                    class="property-link"
-                    @click.stop
+                  Title
+                  <span v-if="sortBy === 'title'">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+                <th
+                  v-for="prop in schema?.properties"
+                  :key="prop.key"
+                  @click="setSort(prop.key)"
+                  :class="{
+                    sortable: true,
+                    sorted: sortBy === prop.key,
+                    desc: sortDir === 'desc' && sortBy === prop.key,
+                  }"
+                  :title="`${prop.description || prop.name}\nType: ${prop.type}`"
+                >
+                  {{ prop.name }}
+                  <span v-if="sortBy === prop.key">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in filteredItems" :key="item.id" class="table-row">
+                <td class="title-cell" :title="item.title" @click="openItemInCraft(item.id)">
+                  {{ item.title }}
+                </td>
+                <td
+                  v-for="prop in schema?.properties"
+                  :key="prop.key"
+                  class="property-cell"
+                  :title="`${prop.name}: ${renderPropertyValue(item.properties?.[prop.key], prop.type)}`"
+                >
+                  <template v-if="isUrlProperty(prop) && item.properties?.[prop.key]">
+                    <a
+                      :href="formatUrl(item.properties[prop.key])"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="property-link"
+                      @click.stop
+                    >
+                      {{ renderPropertyValue(item.properties[prop.key], prop.type) }}
+                    </a>
+                  </template>
+                  <template
+                    v-else-if="
+                      (isEmailProperty(prop) || isEmail(item.properties?.[prop.key])) &&
+                      item.properties?.[prop.key]
+                    "
                   >
-                    {{ renderPropertyValue(item.properties[prop.key], prop.type) }}
-                  </a>
-                </template>
-                <template v-else>
-                  {{ renderPropertyValue(item.properties?.[prop.key], prop.type) }}
-                </template>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                    <a
+                      :href="`mailto:${item.properties[prop.key]}`"
+                      class="property-link"
+                      @click.stop
+                    >
+                      {{ renderPropertyValue(item.properties[prop.key], prop.type) }}
+                    </a>
+                  </template>
+                  <template v-else>
+                    {{ renderPropertyValue(item.properties?.[prop.key], prop.type) }}
+                  </template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <!-- Collection Gallery View -->
         <div v-else class="collection-gallery-wrapper">
-        <div class="gallery-grid">
-          <div
-            v-for="item in filteredItems"
-            :key="item.id"
-            class="gallery-card"
-            @click="openItemInCraft(item.id)"
-          >
-            <div class="gallery-card-image-container">
-              <img
-                v-if="getItemImage(item)"
-                :src="getItemImage(item)"
-                :alt="item.title"
-                class="gallery-card-image"
-              />
-              <div v-else class="gallery-card-placeholder">
-                <Library :size="32" />
+          <div class="gallery-grid">
+            <div
+              v-for="item in filteredItems"
+              :key="item.id"
+              class="gallery-card"
+              @click="openItemInCraft(item.id)"
+            >
+              <div class="gallery-card-image-container">
+                <img
+                  v-if="getItemImage(item)"
+                  :src="getItemImage(item)"
+                  :alt="item.title"
+                  class="gallery-card-image"
+                />
+                <div v-else class="gallery-card-placeholder">
+                  <Library :size="32" />
+                </div>
               </div>
+              <div class="gallery-card-title">{{ item.title }}</div>
             </div>
-            <div class="gallery-card-title">{{ item.title }}</div>
           </div>
         </div>
-      </div>
       </template>
 
       <!-- Footer with action buttons -->

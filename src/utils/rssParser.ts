@@ -50,7 +50,9 @@ export const parseRSS = (xmlText: string): RSSFeed | null => {
         const itemLink = item.querySelector('link')?.textContent || ''
         const itemDescription = item.querySelector('description')?.textContent || ''
         const itemPubDate = item.querySelector('pubDate')?.textContent
-        const itemAuthor = item.querySelector('author')?.textContent || item.querySelector('dc\\:creator')?.textContent
+        const itemAuthor =
+          item.querySelector('author')?.textContent ||
+          item.querySelector('dc\\:creator')?.textContent
         const itemGuid = item.querySelector('guid')?.textContent
 
         // For RSS 2.0 feeds (like Bluesky), be more lenient - if no title, use description or link
@@ -69,7 +71,7 @@ export const parseRSS = (xmlText: string): RSSFeed | null => {
               itemTitle = 'Untitled Post'
             }
           }
-          
+
           items.push({
             title: itemTitle,
             link: itemLink,
@@ -114,14 +116,17 @@ export const parseRSS = (xmlText: string): RSSFeed | null => {
           itemTitle = ''
         }
         // Try multiple ways to get the link
-        const itemLinkElement = entry.querySelector('link[rel="alternate"]') || 
-                               entry.querySelector('link[rel="self"]') || 
-                               entry.querySelector('link')
+        const itemLinkElement =
+          entry.querySelector('link[rel="alternate"]') ||
+          entry.querySelector('link[rel="self"]') ||
+          entry.querySelector('link')
         const itemLink = itemLinkElement?.getAttribute('href') || ''
         const itemSummary = entry.querySelector('summary')?.textContent || ''
         const itemContent = entry.querySelector('content')?.textContent || ''
         const itemDescription = itemSummary || itemContent || ''
-        const itemPublished = entry.querySelector('published')?.textContent || entry.querySelector('updated')?.textContent
+        const itemPublished =
+          entry.querySelector('published')?.textContent ||
+          entry.querySelector('updated')?.textContent
         const itemAuthor = entry.querySelector('author > name')?.textContent || ''
         const itemId = entry.querySelector('id')?.textContent
 
@@ -141,7 +146,7 @@ export const parseRSS = (xmlText: string): RSSFeed | null => {
               itemTitle = 'Untitled Post'
             }
           }
-          
+
           items.push({
             title: itemTitle,
             link: itemLink,
@@ -173,10 +178,14 @@ export const parseRSS = (xmlText: string): RSSFeed | null => {
 }
 
 // Helper function to add timeout to fetch
-const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 15000): Promise<Response> => {
+const fetchWithTimeout = async (
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = 15000,
+): Promise<Response> => {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  
+
   try {
     const response = await fetch(url, {
       ...options,
@@ -196,15 +205,19 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutM
 // Fetch RSS feed via CORS proxy with fallback options
 export const fetchRSSFeed = async (url: string): Promise<RSSFeed | null> => {
   const encodedUrl = encodeURIComponent(url)
-  
+
   // Only use local backend proxy if explicitly configured (not localhost in production)
   const localProxyUrl = import.meta.env.VITE_RSS_PROXY_URL
   const isLocalhostProxy = localProxyUrl && localProxyUrl.includes('localhost')
-  const isProduction = import.meta.env.PROD || (!import.meta.env.DEV && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
-  
+  const isProduction =
+    import.meta.env.PROD ||
+    (!import.meta.env.DEV &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1')
+
   // Try multiple proxy services as fallback
   const proxyOptions = []
-  
+
   // Only include local backend proxy if:
   // 1. It's explicitly configured via env var, AND
   // 2. It's not localhost in production
@@ -217,7 +230,7 @@ export const fetchRSSFeed = async (url: string): Promise<RSSFeed | null> => {
       },
     })
   }
-  
+
   // Add public proxy options
   proxyOptions.push(
     // Option 1: AllOrigins (original)
@@ -274,7 +287,9 @@ export const fetchRSSFeed = async (url: string): Promise<RSSFeed | null> => {
         if (parsed.items.length > 0) {
           return parsed
         } else {
-          console.warn(`${proxy.name} parsed successfully but found 0 items. Feed title: "${parsed.title}". Checking XML structure...`)
+          console.warn(
+            `${proxy.name} parsed successfully but found 0 items. Feed title: "${parsed.title}". Checking XML structure...`,
+          )
           // Log a sample of the XML to help debug
           const sample = xmlText.substring(0, 1000)
           // Still return the feed even with 0 items - let the UI handle it
@@ -293,6 +308,3 @@ export const fetchRSSFeed = async (url: string): Promise<RSSFeed | null> => {
   console.error('❌ All proxy options failed for:', url)
   return null
 }
-
-
-

@@ -102,7 +102,7 @@ onUnmounted(() => {
     align-items: stretch;
     gap: 8px;
   }
-  
+
   .view-subheader-right {
     order: 2;
     justify-content: flex-start;
@@ -168,4 +168,3 @@ onUnmounted(() => {
   gap: 8px;
 }
 </style>
-

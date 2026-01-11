@@ -130,7 +130,12 @@ function setCachedData(filter: string, data: CraftTask[]) {
 
 // Get all tasks combined (inbox, active, upcoming, and logbook)
 const allTasks = computed(() => {
-  const all = [...inboxTasks.value, ...activeTasks.value, ...upcomingTasks.value, ...logbookTasks.value]
+  const all = [
+    ...inboxTasks.value,
+    ...activeTasks.value,
+    ...upcomingTasks.value,
+    ...logbookTasks.value,
+  ]
   // Remove duplicates by id
   const unique = new Map<string, CraftTask>()
   all.forEach((task) => {
@@ -198,7 +203,7 @@ const tasksByDate = computed(() => {
   // Count tasks by schedule date and completion date
   validTasks.value.forEach((task) => {
     const status = getTaskStatus(task)
-    
+
     // Count scheduled tasks
     if (task.taskInfo?.scheduleDate) {
       const scheduleDateStr = task.taskInfo.scheduleDate.split('T')[0]
@@ -225,10 +230,7 @@ const tasksByDate = computed(() => {
 })
 
 const maxDailyCount = computed(() => {
-  return Math.max(
-    ...tasksByDate.value.map((d) => Math.max(d.scheduled, d.completed)),
-    1
-  )
+  return Math.max(...tasksByDate.value.map((d) => Math.max(d.scheduled, d.completed)), 1)
 })
 
 // Status distribution chart
@@ -294,14 +296,14 @@ const loadTasks = async (forceRefresh = false) => {
 
   isLoading.value = true
   error.value = null
-  
+
   // Count API calls needed
   let apiCallCount = 0
   if (forceRefresh || !getCachedData('inbox')) apiCallCount++
   if (forceRefresh || !getCachedData('active')) apiCallCount++
   if (forceRefresh || !getCachedData('upcoming')) apiCallCount++
   if (forceRefresh || !getCachedData('logbook')) apiCallCount++
-  
+
   totalApiCalls.value = apiCallCount
   completedApiCalls.value = 0
 
@@ -504,11 +506,7 @@ onMounted(() => {
       <div v-if="overdueCount > 0" class="stats-section">
         <h3 class="section-title">Overdue Distribution</h3>
         <div class="chart-container">
-          <div
-            v-for="item in overdueDistribution"
-            :key="item.label"
-            class="bar-chart"
-          >
+          <div v-for="item in overdueDistribution" :key="item.label" class="bar-chart">
             <div class="bar-chart-label">{{ item.label }}</div>
             <div class="bar-chart-bar-container">
               <div
@@ -902,4 +900,3 @@ onMounted(() => {
   }
 }
 </style>
-

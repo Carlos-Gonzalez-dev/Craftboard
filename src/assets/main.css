@@ -4,7 +4,7 @@
   --navbar-height: 48px;
   --subheader-height: 40px;
   --footer-height: 48px;
-  
+
   /* Background Colors - Deep with subtle blue undertone */
   --bg-primary: #0a0e1a;
   --bg-secondary: #131a2e;
@@ -68,7 +68,7 @@
 }
 
 /* Light Theme Variables */
-[data-theme="light"] {
+[data-theme='light'] {
   /* Background Colors - Light and clean */
   --bg-primary: #f1f5f9;
   --bg-secondary: #f8fafc;

@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import {
-  Settings,
-  Link as LinkIcon,
-  Maximize2,
-  Minimize2,
-} from 'lucide-vue-next'
+import { Settings, Link as LinkIcon, Maximize2, Minimize2 } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
 
@@ -406,4 +401,3 @@ const reconfigure = () => {
   font-size: 12px;
 }
 </style>
-

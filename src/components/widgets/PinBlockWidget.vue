@@ -198,9 +198,7 @@ const refreshBlock = async () => {
           No results found
         </div>
 
-        <div v-else-if="!searchQuery" class="hint-text">
-          Type at least 2 characters to search
-        </div>
+        <div v-else-if="!searchQuery" class="hint-text">Type at least 2 characters to search</div>
       </template>
     </div>
 
@@ -218,7 +216,12 @@ const refreshBlock = async () => {
 
     <!-- Footer -->
     <div v-if="!isConfiguring && !isCompactView" class="widget-footer">
-      <button @click="refreshBlock" class="footer-button" title="Refresh" :disabled="isLoadingBlock">
+      <button
+        @click="refreshBlock"
+        class="footer-button"
+        title="Refresh"
+        :disabled="isLoadingBlock"
+      >
         <RefreshCw :size="16" :class="{ spinning: isLoadingBlock }" />
       </button>
       <button @click="openBlock" class="footer-button" title="Open in Craft">
@@ -287,8 +290,12 @@ const refreshBlock = async () => {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .search-results {

@@ -496,7 +496,12 @@ const { isCompactView } = useWidgetView()
   <Teleport to="body">
     <div v-if="isFullscreen" class="fullscreen-overlay">
       <div class="widget-container fullscreen">
-        <div class="widget-header" :class="{ draggable: isDraggingEnabled }" :style="headerStyle" @dblclick="toggleFullscreen()">
+        <div
+          class="widget-header"
+          :class="{ draggable: isDraggingEnabled }"
+          :style="headerStyle"
+          @dblclick="toggleFullscreen()"
+        >
           <div
             class="drag-handle"
             @click="toggleDragging"

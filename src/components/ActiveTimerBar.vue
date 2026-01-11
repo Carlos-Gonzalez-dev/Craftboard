@@ -21,13 +21,13 @@ const formattedTime = computed(() => {
     const hours = Math.floor(totalSeconds / 3600)
     const minutes = Math.floor((totalSeconds % 3600) / 60)
     const seconds = totalSeconds % 60
-    
+
     if (hours > 0) {
       return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
     }
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
   }
-  
+
   // Countdown timer
   const minutes = Math.floor(props.timer.timeRemaining / 60)
   const seconds = props.timer.timeRemaining % 60
@@ -36,13 +36,13 @@ const formattedTime = computed(() => {
 
 const progressPercentage = computed(() => {
   if (props.timer.isCompleted) return 100
-  
+
   if (props.timer.timerType === 'stopwatch') {
     // For stopwatch, progress fills every minute (0-60 seconds)
     const secondsInCurrentMinute = props.timer.timeRemaining % 60
     return (secondsInCurrentMinute / 60) * 100
   }
-  
+
   // Countdown timer
   if (props.timer.totalDuration === 0) return 0
   return ((props.timer.totalDuration - props.timer.timeRemaining) / props.timer.totalDuration) * 100
@@ -81,17 +81,17 @@ const widgetIcon = computed(() => {
   >
     <div
       class="timer-progress-bg"
-      :style="{ 
+      :style="{
         width: `${progressPercentage}%`,
-        background: timer.isCompleted ? undefined : timer.color 
+        background: timer.isCompleted ? undefined : timer.color,
       }"
       :class="{ 'completed-bg': timer.isCompleted }"
     ></div>
     <div class="timer-content">
       <div class="timer-info">
-        <component 
-          :is="timer.isCompleted ? CheckCircle : widgetIcon" 
-          :size="18" 
+        <component
+          :is="timer.isCompleted ? CheckCircle : widgetIcon"
+          :size="18"
           :class="timer.isCompleted ? 'completed-icon' : 'widget-icon'"
           :style="{ color: timer.isCompleted ? undefined : timer.color }"
         />

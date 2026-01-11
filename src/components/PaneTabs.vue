@@ -473,4 +473,3 @@ const handleDragEnd = () => {
   color: var(--text-primary);
 }
 </style>
-

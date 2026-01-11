@@ -51,13 +51,13 @@ const saveIframe = () => {
     const url = extractUrlFromIframe(inputValue.value)
     iframeCode.value = inputValue.value.trim()
     iframeUrl.value = url || ''
-    
+
     const widgetData = {
       iframeCode: iframeCode.value,
       iframeUrl: iframeUrl.value,
     }
     emit('update:data', widgetData)
-    
+
     // Try to extract title from iframe or use default
     const titleMatch = inputValue.value.match(/title=["']([^"']+)["']/i)
     const title = titleMatch ? titleMatch[1] : 'iFrame'
@@ -66,13 +66,13 @@ const saveIframe = () => {
     // It's a URL
     iframeUrl.value = inputValue.value.trim()
     iframeCode.value = ''
-    
+
     const widgetData = {
       iframeUrl: iframeUrl.value,
       iframeCode: '',
     }
     emit('update:data', widgetData)
-    
+
     try {
       const url = new URL(iframeUrl.value)
       emit('update:title', url.hostname)
@@ -87,7 +87,6 @@ const saveIframe = () => {
   isConfiguring.value = false
 }
 
-
 // Track if we have an active iframe
 const hasActiveIframe = ref(false)
 
@@ -95,7 +94,7 @@ const hasActiveIframe = ref(false)
 const handleIframeError = (event: Event) => {
   console.warn(
     '[iFrame Widget] Iframe failed to load. This may be due to CORS restrictions, network issues, or the content being unavailable.',
-    event
+    event,
   )
   hasActiveIframe.value = false
 }
@@ -115,23 +114,23 @@ const setupIframeErrorHandling = () => {
     // Check if error message contains iframe-related keywords
     const errorMessage = event.message || ''
     const errorSource = event.filename || ''
-    const isIframeError = 
+    const isIframeError =
       errorMessage.toLowerCase().includes('html') ||
       errorMessage.toLowerCase().includes('iframe') ||
       errorSource.includes('iframe') ||
       (event.target && (event.target as HTMLElement).tagName === 'IFRAME')
-    
+
     if (isIframeError && hasActiveIframe.value) {
       console.warn(
         '[iFrame Widget] An error was detected from the iframe content. This is likely from the embedded page itself, not the widget.',
-        { message: errorMessage, source: errorSource }
+        { message: errorMessage, source: errorSource },
       )
       // Prevent default error logging for iframe errors
       event.preventDefault()
       return true
     }
   }
-  
+
   window.addEventListener('error', errorHandler, true)
 
   // Handle unhandled promise rejections that might come from iframe
@@ -141,13 +140,13 @@ const setupIframeErrorHandling = () => {
       if (reason.toLowerCase().includes('html') || reason.toLowerCase().includes('iframe')) {
         console.warn(
           '[iFrame Widget] An unhandled promise rejection was detected from the iframe content.',
-          event.reason
+          event.reason,
         )
         event.preventDefault()
       }
     }
   }
-  
+
   window.addEventListener('unhandledrejection', rejectionHandler)
 }
 
@@ -168,7 +167,7 @@ onMounted(() => {
     inputValue.value = iframeCode.value || iframeUrl.value
     hasActiveIframe.value = true
   }
-  
+
   // Setup error handling for iframe content
   setupIframeErrorHandling()
 })
@@ -197,7 +196,7 @@ onUnmounted(() => {
           <textarea
             id="iframe-input"
             v-model="inputValue"
-            placeholder="https://example.com or &lt;iframe src=&quot;...&quot;&gt;&lt;/iframe&gt;"
+            placeholder='https://example.com or &lt;iframe src="..."&gt;&lt;/iframe&gt;'
             class="config-input"
             rows="4"
           ></textarea>
@@ -225,7 +224,6 @@ onUnmounted(() => {
         <p>No iframe configured</p>
       </div>
     </div>
-
   </div>
 </template>
 
@@ -371,6 +369,4 @@ onUnmounted(() => {
   color: var(--text-tertiary);
   font-size: 13px;
 }
-
 </style>
-

@@ -48,4 +48,3 @@ defineSlots<{
   cursor: not-allowed;
 }
 </style>
-

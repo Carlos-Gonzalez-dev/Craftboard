@@ -119,8 +119,7 @@ export const useTasksApiStore = defineStore('tasksApi', () => {
           const result = await fetchTasks('document', doc.id)
           // Filter only done/canceled tasks
           return result.items.filter(
-            (task) =>
-              task.taskInfo?.state === 'done' || task.taskInfo?.state === 'canceled',
+            (task) => task.taskInfo?.state === 'done' || task.taskInfo?.state === 'canceled',
           )
         } catch (error) {
           console.error(`Error fetching tasks for daily note ${doc.id}:`, error)

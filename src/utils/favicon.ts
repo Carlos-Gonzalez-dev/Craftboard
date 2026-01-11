@@ -3,7 +3,7 @@ export const getFaviconUrl = (url: string): string => {
   try {
     const urlObj = new URL(url)
     const domain = urlObj.hostname
-    
+
     // Use Google's favicon service (most reliable)
     return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
   } catch (error) {
@@ -21,5 +21,3 @@ export const getDomain = (url: string): string => {
     return url
   }
 }
-
-

@@ -248,9 +248,10 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
 
     // Check cache first if not forcing refresh
     if (!forceRefresh) {
-      const cachedData = cache.getCachedData<
-        Array<{ documentId: string; title: string; tags: string[]; dailyNoteDate?: string }>
-      >(cacheKey)
+      const cachedData =
+        cache.getCachedData<
+          Array<{ documentId: string; title: string; tags: string[]; dailyNoteDate?: string }>
+        >(cacheKey)
       if (cachedData) {
         const result = new Map<
           string,

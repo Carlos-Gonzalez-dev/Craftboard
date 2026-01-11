@@ -40,7 +40,7 @@ const startGlobalTimerUpdate = () => {
       if (timer.timerType === 'stopwatch') {
         const elapsedSinceStart = Math.floor((now - timer.startTimestamp) / 1000)
         const totalElapsed = (timer.elapsedAtStart || 0) + elapsedSinceStart
-        
+
         if (totalElapsed !== timer.timeRemaining) {
           newMap.set(id, { ...timer, timeRemaining: totalElapsed })
           hasChanges = true

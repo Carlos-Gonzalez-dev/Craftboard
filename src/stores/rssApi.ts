@@ -46,8 +46,7 @@ export const useRSSApiStore = defineStore('rssApi', () => {
           title = ''
         }
         // Try different property name variations (case-insensitive)
-        const url =
-          properties.URL || properties.url || properties['URL'] || properties['url'] || ''
+        const url = properties.URL || properties.url || properties['URL'] || properties['url'] || ''
         const category =
           properties.Category ||
           properties.category ||

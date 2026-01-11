@@ -1120,7 +1120,9 @@ onActivated(() => {
                                 <span>{{ event.location }}</span>
                               </div>
                               <div
-                                v-if="event.start.getHours() !== 0 || event.start.getMinutes() !== 0"
+                                v-if="
+                                  event.start.getHours() !== 0 || event.start.getMinutes() !== 0
+                                "
                                 class="week-calendar-event-time"
                               >
                                 <span>{{ formatEventTime(event.start, event.end) }}</span>
@@ -1137,61 +1139,61 @@ onActivated(() => {
                                 { 'recurring-pending': isPendingRecurringTask(task, day) },
                               ]"
                             >
-                            <div class="week-task-header">
-                              <div class="week-task-title-wrapper">
-                                <h4 class="week-task-title" @click="openTaskInCraft(task)">
-                                  {{ extractTitleFromMarkdown(task.markdown) }}
-                                </h4>
-                                <RotateCw
-                                  v-if="isRecurringTask(task)"
-                                  :size="12"
-                                  class="recurring-icon"
-                                  :title="
-                                    isPendingRecurringTask(task, day)
-                                      ? 'Future recurring occurrence'
-                                      : 'Recurring task'
-                                  "
-                                />
+                              <div class="week-task-header">
+                                <div class="week-task-title-wrapper">
+                                  <h4 class="week-task-title" @click="openTaskInCraft(task)">
+                                    {{ extractTitleFromMarkdown(task.markdown) }}
+                                  </h4>
+                                  <RotateCw
+                                    v-if="isRecurringTask(task)"
+                                    :size="12"
+                                    class="recurring-icon"
+                                    :title="
+                                      isPendingRecurringTask(task, day)
+                                        ? 'Future recurring occurrence'
+                                        : 'Recurring task'
+                                    "
+                                  />
+                                </div>
+                                <div class="task-badges">
+                                  <span
+                                    v-if="isOverdueOnScheduledDate(task, day)"
+                                    class="overdue-badge"
+                                    :title="`Overdue by ${getDaysOverdue(task)} day${getDaysOverdue(task) !== 1 ? 's' : ''}`"
+                                  >
+                                    {{ getDaysOverdue(task) }}d
+                                  </span>
+                                  <span
+                                    v-if="hasDeadline(task) && getDaysUntilDeadline(task) !== null"
+                                    class="deadline-badge"
+                                    :class="{
+                                      'deadline-overdue': isDeadlineOverdue(task),
+                                      'deadline-approaching':
+                                        isDeadlineApproaching(task) && !isDeadlineOverdue(task),
+                                    }"
+                                    :title="
+                                      isDeadlineOverdue(task)
+                                        ? `Deadline overdue by ${Math.abs(getDaysUntilDeadline(task) || 0)} day${Math.abs(getDaysUntilDeadline(task) || 0) !== 1 ? 's' : ''}`
+                                        : `Deadline in ${getDaysUntilDeadline(task)} day${getDaysUntilDeadline(task) !== 1 ? 's' : ''}`
+                                    "
+                                  >
+                                    {{
+                                      isDeadlineOverdue(task)
+                                        ? `-${Math.abs(getDaysUntilDeadline(task) || 0)}d`
+                                        : `${getDaysUntilDeadline(task)}d`
+                                    }}
+                                  </span>
+                                </div>
                               </div>
-                              <div class="task-badges">
-                                <span
-                                  v-if="isOverdueOnScheduledDate(task, day)"
-                                  class="overdue-badge"
-                                  :title="`Overdue by ${getDaysOverdue(task)} day${getDaysOverdue(task) !== 1 ? 's' : ''}`"
-                                >
-                                  {{ getDaysOverdue(task) }}d
-                                </span>
-                                <span
-                                  v-if="hasDeadline(task) && getDaysUntilDeadline(task) !== null"
-                                  class="deadline-badge"
-                                  :class="{
-                                    'deadline-overdue': isDeadlineOverdue(task),
-                                    'deadline-approaching':
-                                      isDeadlineApproaching(task) && !isDeadlineOverdue(task),
-                                  }"
-                                  :title="
-                                    isDeadlineOverdue(task)
-                                      ? `Deadline overdue by ${Math.abs(getDaysUntilDeadline(task) || 0)} day${Math.abs(getDaysUntilDeadline(task) || 0) !== 1 ? 's' : ''}`
-                                      : `Deadline in ${getDaysUntilDeadline(task)} day${getDaysUntilDeadline(task) !== 1 ? 's' : ''}`
-                                  "
-                                >
-                                  {{
-                                    isDeadlineOverdue(task)
-                                      ? `-${Math.abs(getDaysUntilDeadline(task) || 0)}d`
-                                      : `${getDaysUntilDeadline(task)}d`
-                                  }}
-                                </span>
+                              <div
+                                v-if="getDocumentTitle(task) && getDocumentId(task)"
+                                class="week-task-document"
+                                @click.stop="openDocumentInCraft(task)"
+                              >
+                                <FileText :size="12" />
+                                <span>{{ getDocumentTitle(task) }}</span>
                               </div>
                             </div>
-                            <div
-                              v-if="getDocumentTitle(task) && getDocumentId(task)"
-                              class="week-task-document"
-                              @click.stop="openDocumentInCraft(task)"
-                            >
-                              <FileText :size="12" />
-                              <span>{{ getDocumentTitle(task) }}</span>
-                            </div>
-                          </div>
                             <div
                               v-if="getTasksForDate(displayedTasks, day).length === 0"
                               class="day-empty"
@@ -1225,10 +1227,7 @@ onActivated(() => {
                   <p>Loading completed tasks...</p>
                 </div>
 
-                <div
-                  v-else-if="displayedTasks.length === 0"
-                  class="empty-state"
-                >
+                <div v-else-if="displayedTasks.length === 0" class="empty-state">
                   <CheckSquare :size="48" class="empty-icon" />
                   <p class="empty-text">
                     {{ activeTab === 'done' ? 'No completed tasks found' : 'No tasks found' }}
@@ -1277,10 +1276,7 @@ onActivated(() => {
                           <span v-else class="task-meta-empty">—</span>
                         </td>
                         <td class="col-status">
-                          <span
-                            class="status-badge"
-                            :class="`status-badge-${getTaskStatus(task)}`"
-                          >
+                          <span class="status-badge" :class="`status-badge-${getTaskStatus(task)}`">
                             {{ getTaskStatus(task) === 'done' ? 'Done' : 'Canceled' }}
                           </span>
                         </td>

@@ -38,6 +38,7 @@ import PaneTabs from './components/PaneTabs.vue'
 import ViewTabs from './components/ViewTabs.vue'
 import SubheaderButton from './components/SubheaderButton.vue'
 import ActiveTimerBar from './components/ActiveTimerBar.vue'
+import QuickAccessButton from './components/QuickAccessButton.vue'
 import { getLatestChangelogDate } from './utils/changelog'
 
 const route = useRoute()
@@ -767,6 +768,9 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Quick Access Floating Button -->
+    <QuickAccessButton />
   </div>
 </template>
 

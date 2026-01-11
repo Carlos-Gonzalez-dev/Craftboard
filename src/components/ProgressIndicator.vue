@@ -63,4 +63,3 @@ const progressPercentage = computed(() => {
   color: var(--text-secondary);
 }
 </style>
-
