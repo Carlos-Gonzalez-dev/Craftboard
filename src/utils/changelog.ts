@@ -5,8 +5,11 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
-    date: '2026-01-11',
-    changes: ['Improved PIN Block widget now has search'],
+    date: '2026-01-11. ',
+    changes: [
+      'Improved PIN Block widget now has search',
+      'Added tags to Graph view and Graph widget',
+    ],
   },
   {
     date: '2026-01-10',

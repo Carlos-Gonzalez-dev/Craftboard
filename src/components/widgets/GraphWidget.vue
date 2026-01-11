@@ -53,6 +53,8 @@ const FOLDERS_CACHE_KEY = 'graph-widget-folders'
 const documents = computed(() => graphApiStore.documents)
 const folders = computed(() => graphApiStore.folders)
 const collections = computed(() => graphApiStore.collections)
+const tagDocuments = computed(() => graphApiStore.tagDocuments)
+const userTags = computed(() => graphApiStore.userTags)
 
 // Cache helpers for folder data (documents, subfolders, collections) - widget-specific cache
 function getCachedFolderData(folderId: string) {
@@ -131,7 +133,7 @@ const rootTitle = computed(() => props.widget.data?.rootTitle || '')
 // Graph types
 interface GraphNode {
   id: string
-  type: 'document' | 'folder' | 'collection'
+  type: 'document' | 'folder' | 'collection' | 'tag'
   label: string
   data: CraftDocument | CraftFolder | any
 }
@@ -139,7 +141,7 @@ interface GraphNode {
 interface GraphLink {
   source: string
   target: string
-  type: string
+  type: 'contains' | 'hasCollection' | 'hasTag'
 }
 
 // Find root folder in the folders list
@@ -225,6 +227,27 @@ const graphNodes = computed<GraphNode[]>(() => {
     }
   })
 
+  // Add tag nodes for tags used by documents in this graph
+  const tagsUsedInGraph = new Set<string>()
+  tagDocuments.value.forEach((docInfo) => {
+    if (documentIdsInGraph.has(docInfo.documentId)) {
+      docInfo.tags.forEach((tag) => tagsUsedInGraph.add(tag))
+    }
+  })
+
+  tagsUsedInGraph.forEach((tag) => {
+    const tagNodeId = `tag:${tag}`
+    if (!nodeIds.has(tagNodeId)) {
+      nodes.push({
+        id: tagNodeId,
+        type: 'tag',
+        label: `#${tag}`,
+        data: { tag },
+      })
+      nodeIds.add(tagNodeId)
+    }
+  })
+
   return nodes
 })
 
@@ -280,6 +303,22 @@ const graphLinks = computed<GraphLink[]>(() => {
     }
   })
 
+  // Add document-tag links
+  tagDocuments.value.forEach((docInfo) => {
+    if (nodeIds.has(docInfo.documentId)) {
+      docInfo.tags.forEach((tag) => {
+        const tagNodeId = `tag:${tag}`
+        if (nodeIds.has(tagNodeId)) {
+          links.push({
+            source: docInfo.documentId,
+            target: tagNodeId,
+            type: 'hasTag',
+          })
+        }
+      })
+    }
+  })
+
   return links
 })
 
@@ -328,6 +367,7 @@ const nodeColors = {
   folder: extractColor(HEADER_COLORS[1].gradient), // Purple
   collection: extractColor(HEADER_COLORS[6].gradient), // Green
   dailyNote: extractColor(HEADER_COLORS[4].gradient), // Orange
+  tag: extractColor(HEADER_COLORS[8].gradient), // Cyan
   root: extractColor(HEADER_COLORS[1].gradient), // Purple
 }
 
@@ -405,6 +445,7 @@ function renderGraph() {
       document: 8,
       folder: 10,
       collection: 9,
+      tag: 7,
     }
     const radius = isRoot ? 12 : radiusMap[d.type] || 8
 
@@ -625,9 +666,9 @@ const reconfigure = async () => {
 
 const refresh = async () => {
   if (rootId.value) {
-    // Clear cache for current folder
+    // Clear cache for current folder and refresh tags
     localStorage.removeItem(FOLDER_DATA_CACHE_PREFIX + rootId.value)
-    await loadFolderData(rootId.value, true)
+    await Promise.all([loadFolderData(rootId.value, true), graphApiStore.refreshTagRelations()])
   } else {
     // Clear folders cache and reload
     localStorage.removeItem(FOLDERS_CACHE_KEY)
@@ -643,15 +684,22 @@ const loadFolders = async (forceRefresh = false) => {
   }
 
   isLoading.value = true
-  totalApiCalls.value = 1
+  totalApiCalls.value = 2
   completedApiCalls.value = 0
   try {
-    await graphApiStore.initializeGraph(forceRefresh)
-    completedApiCalls.value++
+    // Load folders and tags in parallel
+    await Promise.all([
+      graphApiStore.initializeGraph(forceRefresh).then(() => {
+        completedApiCalls.value++
+      }),
+      graphApiStore.fetchTagRelations(forceRefresh).then(() => {
+        completedApiCalls.value++
+      }),
+    ])
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to fetch folders'
     console.error('Error fetching folders:', e)
-    completedApiCalls.value++
+    completedApiCalls.value = totalApiCalls.value
   } finally {
     isLoading.value = false
   }

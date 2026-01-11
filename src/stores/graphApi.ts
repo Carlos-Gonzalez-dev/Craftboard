@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { fetchDocuments, fetchFolders, listCollections } from '../utils/craftApi'
 import type { CraftDocument, CraftFolder } from '../utils/craftApi'
 import { useApiCache } from '../composables/useApiCache'
+import { useTagsApiStore } from './tagsApi'
 
 export interface GraphCollection {
   id: string
@@ -10,13 +11,23 @@ export interface GraphCollection {
   documentId: string
 }
 
+export interface TagDocumentRelation {
+  documentId: string
+  title: string
+  tags: string[]
+}
+
 export const useGraphApiStore = defineStore('graphApi', () => {
   const cache = useApiCache('graph-cache-')
+  const tagsApiStore = useTagsApiStore()
 
   const documents = ref<CraftDocument[]>([])
   const folders = ref<CraftFolder[]>([])
   const collections = ref<GraphCollection[]>([])
+  const tagDocuments = ref<Map<string, TagDocumentRelation>>(new Map())
+  const userTags = ref<string[]>([])
   const isLoading = ref(false)
+  const isLoadingTags = ref(false)
   const totalApiCalls = ref(0)
   const completedApiCalls = ref(0)
 
@@ -141,15 +152,65 @@ export const useGraphApiStore = defineStore('graphApi', () => {
     cache.clearAllCache()
   }
 
+  /**
+   * Fetch tag relations using shared cache from tagsApi
+   * Reads user tags from localStorage and fetches document relationships
+   */
+  const fetchTagRelations = async (forceRefresh = false) => {
+    // Read user tags from localStorage
+    const TAGS_STORAGE_KEY = 'craftboard-tags'
+    const stored = localStorage.getItem(TAGS_STORAGE_KEY)
+    let tags: string[] = []
+
+    if (stored) {
+      try {
+        tags = JSON.parse(stored)
+      } catch {
+        tags = []
+      }
+    }
+
+    userTags.value = tags
+
+    if (tags.length === 0) {
+      tagDocuments.value = new Map()
+      return
+    }
+
+    isLoadingTags.value = true
+
+    try {
+      const result = await tagsApiStore.getDocumentsByTags(tags, forceRefresh)
+      tagDocuments.value = result
+    } catch (e) {
+      console.error('Error fetching tag relations:', e)
+      tagDocuments.value = new Map()
+    } finally {
+      isLoadingTags.value = false
+    }
+  }
+
+  /**
+   * Refresh tag relations
+   */
+  const refreshTagRelations = async () => {
+    await fetchTagRelations(true)
+  }
+
   return {
     documents: computed(() => documents.value),
     folders: computed(() => folders.value),
     collections: computed(() => collections.value),
+    tagDocuments: computed(() => tagDocuments.value),
+    userTags: computed(() => userTags.value),
     isLoading: computed(() => isLoading.value),
+    isLoadingTags: computed(() => isLoadingTags.value),
     totalApiCalls: computed(() => totalApiCalls.value),
     completedApiCalls: computed(() => completedApiCalls.value),
     initializeGraph,
     refreshGraph,
+    fetchTagRelations,
+    refreshTagRelations,
     clearAllCache,
   }
 })

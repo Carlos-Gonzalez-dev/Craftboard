@@ -223,6 +223,130 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
     return loadLogs(tags, true)
   }
 
+  /**
+   * Get documents that contain specific tags (lightweight version for graph)
+   * Returns a Map of documentId -> array of tags found in that document
+   * Uses shared cache with loadLogs
+   */
+  const getDocumentsByTags = async (
+    tags: string[],
+    forceRefresh = false,
+  ): Promise<Map<string, { documentId: string; title: string; tags: string[] }>> => {
+    if (tags.length === 0) {
+      return new Map()
+    }
+
+    const cacheKey = `docs-by-tags-${tags.join('-')}`
+
+    // Check cache first if not forcing refresh
+    if (!forceRefresh) {
+      const cachedData = cache.getCachedData<
+        Array<{ documentId: string; title: string; tags: string[] }>
+      >(cacheKey)
+      if (cachedData) {
+        const result = new Map<string, { documentId: string; title: string; tags: string[] }>()
+        cachedData.forEach((item) => result.set(item.documentId, item))
+        return result
+      }
+    }
+
+    try {
+      const apiUrl = getApiUrl()
+      if (!apiUrl) {
+        return new Map()
+      }
+
+      const token = localStorage.getItem('craft-api-token')
+      if (!token) {
+        return new Map()
+      }
+
+      // Search for documents containing the tags
+      const patterns = tags.map((tag) => `#${tag}(?:\\/[\\w-]+)?`).join('|')
+      const regexPattern = patterns || '#[\\w-]+(?:\\/[\\w-]+)?'
+
+      const searchResponse = await fetch(
+        `${apiUrl}/documents/search?regexps=${encodeURIComponent(regexPattern)}&fetchMetadata=true`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      )
+
+      if (!searchResponse.ok) {
+        return new Map()
+      }
+
+      const searchData = await searchResponse.json()
+      const documents = searchData.items || []
+
+      // For each document, we need to determine which of the user's tags it contains
+      // We'll fetch minimal block data to extract tags
+      const result = new Map<string, { documentId: string; title: string; tags: string[] }>()
+      const dataToCache: Array<{ documentId: string; title: string; tags: string[] }> = []
+
+      for (const doc of documents) {
+        try {
+          const blocksResponse = await fetch(
+            `${apiUrl}/blocks?id=${encodeURIComponent(doc.documentId)}&maxDepth=2`,
+            {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+            },
+          )
+
+          if (blocksResponse.ok) {
+            const blockData = await blocksResponse.json()
+
+            // Extract all tags from the document
+            const extractTagsFromBlock = (block: any): string[] => {
+              const foundTags: string[] = []
+              if (block.markdown) {
+                const blockTags = extractMatchingTags(block.markdown, '')
+                foundTags.push(...blockTags)
+              }
+              if (block.content && Array.isArray(block.content)) {
+                for (const child of block.content) {
+                  foundTags.push(...extractTagsFromBlock(child))
+                }
+              }
+              return foundTags
+            }
+
+            const allFoundTags = [...new Set(extractTagsFromBlock(blockData))]
+            // Filter to only include tags the user is tracking
+            const matchingTags = allFoundTags.filter((t) => tags.includes(t))
+
+            if (matchingTags.length > 0) {
+              const entry = {
+                documentId: doc.documentId,
+                title: doc.title || 'Untitled',
+                tags: matchingTags,
+              }
+              result.set(doc.documentId, entry)
+              dataToCache.push(entry)
+            }
+          }
+        } catch {
+          // Continue with other documents
+        }
+      }
+
+      // Cache the results
+      cache.setCachedData(cacheKey, dataToCache)
+
+      return result
+    } catch {
+      return new Map()
+    }
+  }
+
   return {
     // State
     logs: computed(() => logs.value),
@@ -234,6 +358,7 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
     // Methods
     loadLogs,
     refreshLogs,
+    getDocumentsByTags,
     clearCache: (tags: string[]) => cache.clearCache(tags.join('-')),
     clearAllCache: () => cache.clearAllCache(),
     extractMatchingTags,

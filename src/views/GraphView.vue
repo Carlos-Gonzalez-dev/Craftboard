@@ -40,7 +40,9 @@ try {
 const documents = computed(() => graphApiStore.documents)
 const folders = computed(() => graphApiStore.folders)
 const collections = computed(() => graphApiStore.collections)
-const isLoading = computed(() => graphApiStore.isLoading)
+const tagDocuments = computed(() => graphApiStore.tagDocuments)
+const userTags = computed(() => graphApiStore.userTags)
+const isLoading = computed(() => graphApiStore.isLoading || graphApiStore.isLoadingTags)
 const totalApiCalls = computed(() => graphApiStore.totalApiCalls)
 const completedApiCalls = computed(() => graphApiStore.completedApiCalls)
 
@@ -53,6 +55,7 @@ const showDocuments = ref(true)
 const showFolders = ref(true)
 const showCollections = ref(true)
 const showDailyNotes = ref(true)
+const showTags = ref(true)
 const searchQuery = ref('')
 const currentSearchIndex = ref(0)
 const showLabels = ref(true)
@@ -100,7 +103,7 @@ watch(
 // Graph types
 interface GraphNode {
   id: string
-  type: 'document' | 'folder' | 'collection' | 'dailyNote'
+  type: 'document' | 'folder' | 'collection' | 'dailyNote' | 'tag'
   label: string
   data: CraftDocument | CraftFolder | any
   x?: number
@@ -112,7 +115,7 @@ interface GraphNode {
 interface GraphLink {
   source: string | GraphNode
   target: string | GraphNode
-  type: 'contains' | 'hasCollection'
+  type: 'contains' | 'hasCollection' | 'hasTag'
 }
 
 let simulation: d3.Simulation<GraphNode, GraphLink> | null = null
@@ -145,6 +148,7 @@ const nodeColors = {
   folder: extractColor(HEADER_COLORS[1].gradient), // Purple
   collection: extractColor(HEADER_COLORS[6].gradient), // Green
   dailyNote: extractColor(HEADER_COLORS[4].gradient), // Orange
+  tag: extractColor(HEADER_COLORS[8].gradient), // Cyan
   root: extractColor(HEADER_COLORS[1].gradient), // Purple
 }
 
@@ -226,6 +230,18 @@ const graphNodes = computed<GraphNode[]>(() => {
     })
   }
 
+  // Add tag nodes
+  if (showTags.value && userTags.value.length > 0) {
+    userTags.value.forEach((tag) => {
+      nodes.push({
+        id: `tag:${tag}`,
+        type: 'tag',
+        label: `#${tag}`,
+        data: { tag },
+      })
+    })
+  }
+
   // Filter orphan nodes if option is disabled
   if (!showOrphanNodes.value) {
     const tempLinks: GraphLink[] = []
@@ -258,6 +274,22 @@ const graphNodes = computed<GraphNode[]>(() => {
         })
       }
     })
+
+    // Add tag links for orphan filtering
+    if (showTags.value) {
+      tagDocuments.value.forEach((docInfo) => {
+        docInfo.tags.forEach((tag) => {
+          const tagNodeId = `tag:${tag}`
+          if (nodeIds.has(docInfo.documentId) && nodeIds.has(tagNodeId)) {
+            tempLinks.push({
+              source: docInfo.documentId,
+              target: tagNodeId,
+              type: 'hasTag',
+            })
+          }
+        })
+      })
+    }
 
     const connectedNodeIds = new Set<string>()
     tempLinks.forEach((link) => {
@@ -341,6 +373,25 @@ const graphLinks = computed<GraphLink[]>(() => {
     })
   }
 
+  // Add tag links (document -> tag)
+  if (showTags.value) {
+    tagDocuments.value.forEach((docInfo) => {
+      // Check if the document node is visible
+      if (!visibleNodeIds.has(docInfo.documentId)) return
+
+      docInfo.tags.forEach((tag) => {
+        const tagNodeId = `tag:${tag}`
+        if (visibleNodeIds.has(tagNodeId)) {
+          links.push({
+            source: docInfo.documentId,
+            target: tagNodeId,
+            type: 'hasTag',
+          })
+        }
+      })
+    })
+  }
+
   if (showRootNode.value && visibleNodeIds.has('__root__')) {
     const nodesWithIncomingLinks = new Set<string>()
     links.forEach((link) => {
@@ -417,7 +468,11 @@ const fetchAllData = async (forceRefresh = false) => {
   }
 
   try {
-    await graphApiStore.initializeGraph(forceRefresh)
+    // Fetch graph data and tag relations in parallel
+    await Promise.all([
+      graphApiStore.initializeGraph(forceRefresh),
+      graphApiStore.fetchTagRelations(forceRefresh),
+    ])
     lastFetchedAt.value = new Date()
 
     // Trigger graph render after data loads
@@ -432,7 +487,8 @@ const fetchAllData = async (forceRefresh = false) => {
 }
 
 const refreshData = async () => {
-  await graphApiStore.refreshGraph()
+  // Refresh graph data and tag relations in parallel
+  await Promise.all([graphApiStore.refreshGraph(), graphApiStore.refreshTagRelations()])
   lastFetchedAt.value = new Date()
 
   // Trigger graph render after refresh
@@ -538,6 +594,7 @@ function renderGraph() {
       folder: 10,
       collection: 9,
       dailyNote: 8,
+      tag: 7,
     }
     const radius = isRootNode ? 14 : radiusMap[d.type] || 8
 
@@ -1024,22 +1081,23 @@ defineExpose({ centerGraph, fitAll })
       <router-link to="/settings" class="settings-link">Go to Settings</router-link>
     </div>
 
-    <div v-else-if="isLoading" class="loading-message">
-      <ProgressIndicator
-        :completed="completedApiCalls"
-        :total="totalApiCalls"
-        message="Loading data"
-      />
-    </div>
-
-    <div v-else-if="graphNodes.length === 0" class="empty-message">
-      <p>No data to display</p>
-      <p class="empty-hint">Check your API URL and filters</p>
-    </div>
-
     <div v-else class="graph-content-wrapper">
       <div class="graph-container">
-        <svg ref="svgRef" class="graph-svg"></svg>
+        <div v-if="isLoading" class="loading-message">
+          <ProgressIndicator
+            :completed="completedApiCalls"
+            :total="totalApiCalls"
+            message="Loading data"
+          />
+        </div>
+
+        <div v-else-if="graphNodes.length === 0" class="empty-message">
+          <p>No data to display</p>
+          <p class="empty-hint">Check your API URL and filters</p>
+        </div>
+
+        <svg v-else ref="svgRef" class="graph-svg"></svg>
+
         <!-- Open sidebar button - appears when sidebar is closed -->
         <Transition name="fade">
           <button
@@ -1053,9 +1111,9 @@ defineExpose({ centerGraph, fitAll })
         </Transition>
       </div>
 
-      <!-- Sidebar - Right side -->
+      <!-- Sidebar - Right side (always available when not in error state) -->
       <Transition name="slide-right">
-        <aside v-show="showSidebar && !error" class="sidebar">
+        <aside v-show="showSidebar" class="sidebar">
           <div class="sidebar-header">
             <h3>Graph Settings</h3>
             <button @click="showSidebar = false" class="close-button" title="Close sidebar">
@@ -1082,6 +1140,10 @@ defineExpose({ centerGraph, fitAll })
                 <label class="filter-checkbox">
                   <input v-model="showDailyNotes" type="checkbox" />
                   <span>Daily Notes ({{ dailyNotesCount }})</span>
+                </label>
+                <label class="filter-checkbox">
+                  <input v-model="showTags" type="checkbox" />
+                  <span>Tags ({{ userTags.length }})</span>
                 </label>
               </div>
             </div>
