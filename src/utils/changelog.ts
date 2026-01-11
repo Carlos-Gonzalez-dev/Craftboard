@@ -9,6 +9,7 @@ export const changelog: ChangelogEntry[] = [
     changes: [
       'Improved PIN Block widget now has search',
       'Added tags to Graph view and Graph widget',
+      'Added env property to Bookmark view and bookmark widget to diferentiate between dev, staging and prod links',
     ],
   },
   {

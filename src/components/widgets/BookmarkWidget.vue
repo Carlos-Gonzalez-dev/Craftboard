@@ -188,10 +188,7 @@ watch(
           v-for="bookmark in filteredBookmarks"
           :key="bookmark.id"
           @click="selectBookmark(bookmark)"
-          :class="[
-            'bookmark-option',
-            bookmark.env ? `bookmark-option-${bookmark.env}` : ''
-          ]"
+          :class="['bookmark-option', bookmark.env ? `bookmark-option-${bookmark.env}` : '']"
         >
           <img
             :src="getFaviconUrl(bookmark.url)"
@@ -206,10 +203,7 @@ watch(
           <div class="bookmark-info">
             <div class="bookmark-title-row">
               <div class="bookmark-title">{{ bookmark.title || getDomain(bookmark.url) }}</div>
-              <span
-                v-if="bookmark.env"
-                :class="['env-badge', `env-badge-${bookmark.env}`]"
-              >
+              <span v-if="bookmark.env" :class="['env-badge', `env-badge-${bookmark.env}`]">
                 {{ bookmark.env }}
               </span>
             </div>
@@ -229,7 +223,7 @@ watch(
         rel="noopener noreferrer"
         :class="[
           'bookmark-link',
-          selectedBookmark.env ? `bookmark-link-${selectedBookmark.env}` : ''
+          selectedBookmark.env ? `bookmark-link-${selectedBookmark.env}` : '',
         ]"
       >
         <img
@@ -496,17 +490,17 @@ watch(
     align-items: center;
     text-align: center;
   }
-  
+
   .bookmark-content {
     align-items: center;
   }
-  
+
   .bookmark-header {
     flex-direction: column;
     align-items: center;
     gap: 4px;
   }
-  
+
   .bookmark-title-large {
     text-align: center;
     white-space: normal;
@@ -514,7 +508,7 @@ watch(
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
   }
-  
+
   .bookmark-url-small {
     text-align: center;
   }

@@ -505,10 +505,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
                   :href="bookmark.url"
                   target="_blank"
                   rel="noopener noreferrer"
-                  :class="[
-                    'bookmark-card',
-                    bookmark.env ? `bookmark-card-${bookmark.env}` : ''
-                  ]"
+                  :class="['bookmark-card', bookmark.env ? `bookmark-card-${bookmark.env}` : '']"
                 >
                   <div class="bookmark-favicon">
                     <img
@@ -523,11 +520,10 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
                   </div>
                   <div class="bookmark-content">
                     <div class="bookmark-header">
-                      <h3 class="bookmark-title">{{ bookmark.title || getDomain(bookmark.url) }}</h3>
-                      <span
-                        v-if="bookmark.env"
-                        :class="['env-badge', `env-badge-${bookmark.env}`]"
-                      >
+                      <h3 class="bookmark-title">
+                        {{ bookmark.title || getDomain(bookmark.url) }}
+                      </h3>
+                      <span v-if="bookmark.env" :class="['env-badge', `env-badge-${bookmark.env}`]">
                         {{ bookmark.env }}
                       </span>
                     </div>

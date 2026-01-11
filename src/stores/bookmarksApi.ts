@@ -64,9 +64,10 @@ export const useBookmarksApiStore = defineStore('bookmarksApi', () => {
               url: String(url),
               category: String(category),
               tags: Array.isArray(tags) ? tags.map((t: any) => String(t)) : [],
-              env: env && ['dev', 'staging', 'prod'].includes(String(env).toLowerCase())
-                ? (String(env).toLowerCase() as 'dev' | 'staging' | 'prod')
-                : undefined,
+              env:
+                env && ['dev', 'staging', 'prod'].includes(String(env).toLowerCase())
+                  ? (String(env).toLowerCase() as 'dev' | 'staging' | 'prod')
+                  : undefined,
             }
           }
           return null
