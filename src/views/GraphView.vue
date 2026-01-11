@@ -1,19 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick, onActivated, onUnmounted, inject, h } from 'vue'
-import {
-  getApiUrl,
-  getSpaceId,
-  getCraftLinkPreference,
-  buildCraftAppLink,
-  buildCraftWebLink,
-} from '../utils/craftApi'
+import { getApiUrl } from '../utils/craftApi'
 import type { CraftDocument, CraftFolder } from '../utils/craftApi'
 import * as d3 from 'd3'
 import { useRoute } from 'vue-router'
 import { RefreshCw, Maximize2, Move, Settings, X, Network, PanelRightOpen } from 'lucide-vue-next'
-import ViewSubheader from '../components/ViewSubheader.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ProgressIndicator from '../components/ProgressIndicator.vue'
+import GraphNodeModal from '../components/GraphNodeModal.vue'
 import { useGraphApiStore } from '../stores/graphApi'
 
 const route = useRoute()
@@ -118,24 +112,10 @@ interface GraphLink {
   type: 'contains' | 'hasCollection' | 'hasTag'
 }
 
+import { HEADER_COLORS } from '../constants/colors'
+
 let simulation: d3.Simulation<GraphNode, GraphLink> | null = null
 let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null
-
-// Use widget header colors - extract solid colors from gradients
-const HEADER_COLORS = [
-  { name: 'Indigo', gradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' },
-  { name: 'Purple', gradient: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)' },
-  { name: 'Pink', gradient: 'linear-gradient(135deg, #ec4899 0%, #be185d 100%)' },
-  { name: 'Rose', gradient: 'linear-gradient(135deg, #f43f5e 0%, #be123c 100%)' },
-  { name: 'Orange', gradient: 'linear-gradient(135deg, #f97316 0%, #c2410c 100%)' },
-  { name: 'Amber', gradient: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)' },
-  { name: 'Green', gradient: 'linear-gradient(135deg, #22c55e 0%, #15803d 100%)' },
-  { name: 'Teal', gradient: 'linear-gradient(135deg, #14b8a6 0%, #0f766e 100%)' },
-  { name: 'Cyan', gradient: 'linear-gradient(135deg, #22d3ee 0%, #0891b2 100%)' },
-  { name: 'Blue', gradient: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' },
-  { name: 'Violet', gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)' },
-  { name: 'Fuchsia', gradient: 'linear-gradient(135deg, #d946ef 0%, #a21caf 100%)' },
-]
 
 // Extract first color from gradient
 const extractColor = (gradient: string): string => {
@@ -144,12 +124,12 @@ const extractColor = (gradient: string): string => {
 }
 
 const nodeColors = {
-  document: extractColor(HEADER_COLORS[0].gradient), // Indigo
-  folder: extractColor(HEADER_COLORS[1].gradient), // Purple
-  collection: extractColor(HEADER_COLORS[6].gradient), // Green
-  dailyNote: extractColor(HEADER_COLORS[4].gradient), // Orange
-  tag: extractColor(HEADER_COLORS[8].gradient), // Cyan
-  root: extractColor(HEADER_COLORS[1].gradient), // Purple
+  document: extractColor(HEADER_COLORS[0]!.gradient), // Indigo
+  folder: extractColor(HEADER_COLORS[1]!.gradient), // Purple
+  collection: extractColor(HEADER_COLORS[6]!.gradient), // Green
+  dailyNote: extractColor(HEADER_COLORS[4]!.gradient), // Orange
+  tag: extractColor(HEADER_COLORS[8]!.gradient), // Cyan
+  root: extractColor(HEADER_COLORS[1]!.gradient), // Purple
 }
 
 // Computed
@@ -715,169 +695,6 @@ function fitAll() {
 function handleNodeClick(node: GraphNode) {
   selectedNode.value = node
 }
-
-function getNodeColor(node: GraphNode): string {
-  const isRootNode = node.id === '__root__'
-  const nodeType = node.type as keyof typeof nodeColors
-  return isRootNode ? nodeColors.root : nodeColors[nodeType] || '#6b7280'
-}
-
-function getNodeDates(node: GraphNode): Array<{ label: string; value: string }> {
-  const dates: Array<{ label: string; value: string }> = []
-  const data = node.data as any
-
-  if (data.lastModifiedAt) {
-    dates.push({
-      label: 'Last Modified',
-      value: new Date(data.lastModifiedAt).toLocaleString(),
-    })
-  }
-  if (data.createdAt) {
-    dates.push({
-      label: 'Created',
-      value: new Date(data.createdAt).toLocaleString(),
-    })
-  }
-  if (data.dailyNoteDate) {
-    dates.push({
-      label: 'Date',
-      value: new Date(data.dailyNoteDate).toLocaleDateString(),
-    })
-  }
-
-  return dates
-}
-
-function getBacklinks(node: GraphNode): { node: GraphNode; type: string }[] {
-  // Get all links where this node is the target
-  const backlinks: { node: GraphNode; type: string }[] = []
-
-  graphLinks.value.forEach((link) => {
-    const targetId = typeof link.target === 'string' ? link.target : link.target.id
-    const sourceId = typeof link.source === 'string' ? link.source : link.source.id
-
-    if (targetId === node.id) {
-      const sourceNode = graphNodes.value.find((n) => n.id === sourceId)
-      if (sourceNode) {
-        backlinks.push({ node: sourceNode, type: link.type })
-      }
-    }
-  })
-
-  return backlinks
-}
-
-function getExternalLinks(node: GraphNode): { node: GraphNode; type: string }[] {
-  // Get all links where this node is the source
-  const externalLinks: { node: GraphNode; type: string }[] = []
-
-  graphLinks.value.forEach((link) => {
-    const sourceId = typeof link.source === 'string' ? link.source : link.source.id
-    const targetId = typeof link.target === 'string' ? link.target : link.target.id
-
-    if (sourceId === node.id) {
-      const targetNode = graphNodes.value.find((n) => n.id === targetId)
-      if (targetNode) {
-        externalLinks.push({ node: targetNode, type: link.type })
-      }
-    }
-  })
-
-  return externalLinks
-}
-
-function getCraftLink(node: GraphNode): string | null {
-  const spaceId = getSpaceId()
-  if (!spaceId) return null
-
-  const data = node.data as CraftDocument | { documentId?: string }
-  const preference = getCraftLinkPreference()
-
-  switch (node.type) {
-    case 'document':
-    case 'dailyNote': {
-      const doc = data as CraftDocument
-      if (preference === 'web') {
-        // Use clickableLink if available (contains correct document ID and share token)
-        if (doc.clickableLink) {
-          return doc.clickableLink
-        }
-        return buildCraftWebLink(node.id, spaceId)
-      }
-      return buildCraftAppLink(node.id, spaceId)
-    }
-    case 'folder':
-      // Folders only support app links
-      return `craftdocs://openfolder?folderId=${node.id}&spaceId=${spaceId}&title=${encodeURIComponent(node.label)}`
-    case 'collection': {
-      // Use collection's own ID (block ID) for links
-      if (preference === 'web') {
-        return buildCraftWebLink(node.id, spaceId)
-      }
-      return buildCraftAppLink(node.id, spaceId)
-    }
-    default:
-      return null
-  }
-}
-
-function openCraftLink(node: GraphNode) {
-  const spaceId = getSpaceId()
-  if (!spaceId) {
-    alert('Could not retrieve Space ID. Please configure it manually in Settings.')
-    return
-  }
-
-  const preference = getCraftLinkPreference()
-  const data = node.data as CraftDocument | { documentId?: string }
-
-  switch (node.type) {
-    case 'document':
-    case 'dailyNote': {
-      const doc = data as CraftDocument
-      if (preference === 'web') {
-        // Use clickableLink if available (contains correct document ID and share token)
-        if (doc.clickableLink) {
-          window.open(doc.clickableLink, '_blank')
-          return
-        }
-        const webLink = buildCraftWebLink(node.id, spaceId)
-        if (webLink) {
-          window.open(webLink, '_blank')
-          return
-        }
-      }
-      // Fallback to app link
-      const appLink = buildCraftAppLink(node.id, spaceId)
-      if (appLink) {
-        window.location.href = appLink
-      }
-      break
-    }
-    case 'folder':
-      // Folders only support app links
-      const folderLink = `craftdocs://openfolder?folderId=${node.id}&spaceId=${spaceId}&title=${encodeURIComponent(node.label)}`
-      window.location.href = folderLink
-      break
-    case 'collection': {
-      // Use collection's own ID (block ID) for links
-      if (preference === 'web') {
-        const webLink = buildCraftWebLink(node.id, spaceId)
-        if (webLink) {
-          window.open(webLink, '_blank')
-          return
-        }
-      }
-      // Fallback to app link
-      const appLink = buildCraftAppLink(node.id, spaceId)
-      if (appLink) {
-        window.location.href = appLink
-      }
-      break
-    }
-  }
-}
-
 // Watch for theme changes and re-render graph
 watch(
   () => document.documentElement.getAttribute('data-theme'),
@@ -903,7 +720,7 @@ onMounted(() => {
         h(
           SubheaderButton,
           {
-            disabled: !d3Available.value,
+            disabled: !d3Available,
             title: 'Center view',
             onClick: centerGraph,
           },
@@ -914,7 +731,7 @@ onMounted(() => {
         h(
           SubheaderButton,
           {
-            disabled: !d3Available.value,
+            disabled: !d3Available,
             title: 'Fit all',
             onClick: fitAll,
           },
@@ -966,7 +783,7 @@ onActivated(() => {
         h(
           SubheaderButton,
           {
-            disabled: !d3Available.value,
+            disabled: !d3Available,
             title: 'Center view',
             onClick: centerGraph,
           },
@@ -977,7 +794,7 @@ onActivated(() => {
         h(
           SubheaderButton,
           {
-            disabled: !d3Available.value,
+            disabled: !d3Available,
             title: 'Fit all',
             onClick: fitAll,
           },
@@ -1194,252 +1011,15 @@ defineExpose({ centerGraph, fitAll })
       </Transition>
     </div>
 
-    <!-- Node Details Modal -->
-    <Transition
-      enter-active-class="transition-all duration-200 ease-out"
-      leave-active-class="transition-all duration-150 ease-in"
-      enter-from-class="opacity-0"
-      enter-to-class="opacity-100"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0"
-    >
-      <div v-if="selectedNode" class="node-modal-overlay" @click.self="selectedNode = null">
-        <Transition
-          enter-active-class="transition-all duration-200 ease-out"
-          leave-active-class="transition-all duration-150 ease-in"
-          enter-from-class="opacity-0 scale-95"
-          enter-to-class="opacity-100 scale-100"
-          leave-from-class="opacity-100 scale-100"
-          leave-to-class="opacity-0 scale-95"
-        >
-          <div v-if="selectedNode" class="node-modal">
-            <!-- Modal Header with Accent Bar -->
-            <div
-              class="node-modal-accent"
-              :style="{ backgroundColor: getNodeColor(selectedNode) }"
-            ></div>
-
-            <div class="node-modal-header">
-              <div class="node-modal-title-section">
-                <div
-                  class="node-modal-icon"
-                  :style="{ backgroundColor: getNodeColor(selectedNode) }"
-                >
-                  <!-- Document Icon -->
-                  <svg
-                    v-if="selectedNode.type === 'document' || selectedNode.type === 'dailyNote'"
-                    class="icon-large"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                  <!-- Folder Icon -->
-                  <svg
-                    v-else-if="selectedNode.type === 'folder'"
-                    class="icon-large"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                    />
-                  </svg>
-                  <!-- Collection Icon -->
-                  <svg
-                    v-else-if="selectedNode.type === 'collection'"
-                    class="icon-large"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                    />
-                  </svg>
-                </div>
-                <div class="node-modal-title-content">
-                  <h2 class="node-modal-title">{{ selectedNode.label }}</h2>
-                  <div class="node-modal-badge-container">
-                    <span
-                      class="node-modal-badge"
-                      :style="{
-                        backgroundColor: getNodeColor(selectedNode) + '20',
-                        color: getNodeColor(selectedNode),
-                      }"
-                    >
-                      {{ selectedNode.type }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <button @click="selectedNode = null" class="node-modal-close">
-                <svg class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <!-- Modal Content -->
-            <div class="node-modal-content">
-              <!-- Dates Section -->
-              <div v-if="getNodeDates(selectedNode).length > 0" class="node-modal-section">
-                <div class="node-modal-section-header">
-                  <svg class="icon-small" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                    />
-                  </svg>
-                  <h3 class="node-modal-section-title">Timeline</h3>
-                </div>
-                <div class="node-modal-dates-list">
-                  <div
-                    v-for="date in getNodeDates(selectedNode)"
-                    :key="date.label"
-                    class="node-modal-date-item"
-                  >
-                    <span class="node-modal-date-label">{{ date.label }}</span>
-                    <span class="node-modal-date-value">{{ date.value }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Backlinks Section -->
-              <div v-if="getBacklinks(selectedNode).length > 0" class="node-modal-section">
-                <div class="node-modal-section-header">
-                  <svg class="icon-small" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
-                    />
-                  </svg>
-                  <h3 class="node-modal-section-title">Referenced By</h3>
-                  <span class="node-modal-section-count">{{
-                    getBacklinks(selectedNode).length
-                  }}</span>
-                </div>
-                <div class="node-modal-links-list">
-                  <button
-                    v-for="link in getBacklinks(selectedNode)"
-                    :key="link.node.id"
-                    @click="handleNodeClick(link.node)"
-                    class="node-modal-link-item"
-                  >
-                    <div
-                      class="node-modal-link-dot"
-                      :style="{ backgroundColor: getNodeColor(link.node) }"
-                    ></div>
-                    <div class="node-modal-link-content">
-                      <div class="node-modal-link-title">{{ link.node.label }}</div>
-                      <div class="node-modal-link-type">{{ link.node.type }}</div>
-                    </div>
-                    <svg
-                      class="icon-small node-modal-link-arrow"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <!-- External Links Section -->
-              <div v-if="getExternalLinks(selectedNode).length > 0" class="node-modal-section">
-                <div class="node-modal-section-header">
-                  <svg class="icon-small" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M13 5l7 7-7 7M5 5l7 7-7 7"
-                    />
-                  </svg>
-                  <h3 class="node-modal-section-title">Links To</h3>
-                  <span class="node-modal-section-count">{{
-                    getExternalLinks(selectedNode).length
-                  }}</span>
-                </div>
-                <div class="node-modal-links-list">
-                  <button
-                    v-for="link in getExternalLinks(selectedNode)"
-                    :key="link.node.id"
-                    @click="handleNodeClick(link.node)"
-                    class="node-modal-link-item"
-                  >
-                    <div
-                      class="node-modal-link-dot"
-                      :style="{ backgroundColor: getNodeColor(link.node) }"
-                    ></div>
-                    <div class="node-modal-link-content">
-                      <div class="node-modal-link-title">{{ link.node.label }}</div>
-                      <div class="node-modal-link-type">{{ link.node.type }}</div>
-                    </div>
-                    <svg
-                      class="icon-small node-modal-link-arrow"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Open in Craft Button -->
-              <div v-if="getCraftLink(selectedNode)" class="node-modal-actions">
-                <button @click="openCraftLink(selectedNode)" class="node-modal-open-button">
-                  <svg class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
-                  Open in Craft
-                </button>
-              </div>
-            </div>
-          </div>
-        </Transition>
-      </div>
-    </Transition>
+    <!-- Node Modal -->
+    <GraphNodeModal
+      :node="selectedNode"
+      :nodes="graphNodes"
+      :links="graphLinks"
+      :node-colors="nodeColors"
+      @close="selectedNode = null"
+      @node-click="handleNodeClick"
+    />
   </div>
 </template>
 

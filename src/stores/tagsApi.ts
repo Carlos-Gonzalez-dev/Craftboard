@@ -225,13 +225,15 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
 
   /**
    * Get documents that contain specific tags (lightweight version for graph)
-   * Returns a Map of documentId -> array of tags found in that document
+   * Returns a Map of documentId -> document info with tags
    * Uses shared cache with loadLogs
    */
   const getDocumentsByTags = async (
     tags: string[],
     forceRefresh = false,
-  ): Promise<Map<string, { documentId: string; title: string; tags: string[] }>> => {
+  ): Promise<
+    Map<string, { documentId: string; title: string; tags: string[]; dailyNoteDate?: string }>
+  > => {
     if (tags.length === 0) {
       return new Map()
     }
@@ -241,10 +243,13 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
     // Check cache first if not forcing refresh
     if (!forceRefresh) {
       const cachedData = cache.getCachedData<
-        Array<{ documentId: string; title: string; tags: string[] }>
+        Array<{ documentId: string; title: string; tags: string[]; dailyNoteDate?: string }>
       >(cacheKey)
       if (cachedData) {
-        const result = new Map<string, { documentId: string; title: string; tags: string[] }>()
+        const result = new Map<
+          string,
+          { documentId: string; title: string; tags: string[]; dailyNoteDate?: string }
+        >()
         cachedData.forEach((item) => result.set(item.documentId, item))
         return result
       }
@@ -285,8 +290,16 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
 
       // For each document, we need to determine which of the user's tags it contains
       // We'll fetch minimal block data to extract tags
-      const result = new Map<string, { documentId: string; title: string; tags: string[] }>()
-      const dataToCache: Array<{ documentId: string; title: string; tags: string[] }> = []
+      const result = new Map<
+        string,
+        { documentId: string; title: string; tags: string[]; dailyNoteDate?: string }
+      >()
+      const dataToCache: Array<{
+        documentId: string
+        title: string
+        tags: string[]
+        dailyNoteDate?: string
+      }> = []
 
       for (const doc of documents) {
         try {
@@ -324,10 +337,19 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
             const matchingTags = allFoundTags.filter((t) => tags.includes(t))
 
             if (matchingTags.length > 0) {
-              const entry = {
+              const entry: {
+                documentId: string
+                title: string
+                tags: string[]
+                dailyNoteDate?: string
+              } = {
                 documentId: doc.documentId,
                 title: doc.title || 'Untitled',
                 tags: matchingTags,
+              }
+              // Include dailyNoteDate if present (for proper label formatting)
+              if (doc.dailyNoteDate) {
+                entry.dailyNoteDate = doc.dailyNoteDate
               }
               result.set(doc.documentId, entry)
               dataToCache.push(entry)

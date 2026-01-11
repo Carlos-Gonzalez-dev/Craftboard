@@ -15,6 +15,7 @@ export interface TagDocumentRelation {
   documentId: string
   title: string
   tags: string[]
+  dailyNoteDate?: string
 }
 
 export const useGraphApiStore = defineStore('graphApi', () => {

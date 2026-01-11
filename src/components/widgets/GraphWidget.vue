@@ -1,23 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
-import { Settings, RefreshCw, Loader, Move, Maximize2 } from 'lucide-vue-next'
+import { Settings, RefreshCw, Move, Maximize2 } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
 import { useGraphApiStore } from '../../stores/graphApi'
-import {
-  getApiUrl,
-  fetchDocuments,
-  listCollections,
-  openCraftLink,
-  buildCraftAppLink,
-  buildCraftWebLink,
-  getCraftLinkPreference,
-  getSpaceId,
-  getCacheExpiryMs,
-  type CraftDocument,
-  type CraftFolder,
-} from '../../utils/craftApi'
+import { getApiUrl, type CraftDocument, type CraftFolder } from '../../utils/craftApi'
 import ProgressIndicator from '../ProgressIndicator.vue'
+import GraphNodeModal from '../GraphNodeModal.vue'
 import * as d3 from 'd3'
 
 const props = defineProps<{
@@ -45,95 +34,57 @@ try {
   console.warn('D3.js not available. Graph visualization will not work.')
 }
 
-// Cache keys for folder-specific data (documents/subfolders/collections within a folder)
-const FOLDER_DATA_CACHE_PREFIX = 'graph-widget-folder-'
-const FOLDERS_CACHE_KEY = 'graph-widget-folders'
-
-// Get data from store
+// Get data from store (shared with GraphView)
 const documents = computed(() => graphApiStore.documents)
 const folders = computed(() => graphApiStore.folders)
 const collections = computed(() => graphApiStore.collections)
 const tagDocuments = computed(() => graphApiStore.tagDocuments)
 const userTags = computed(() => graphApiStore.userTags)
+const isLoading = computed(() => graphApiStore.isLoading || graphApiStore.isLoadingTags)
+const totalApiCalls = computed(() => graphApiStore.totalApiCalls)
+const completedApiCalls = computed(() => graphApiStore.completedApiCalls)
 
-// Cache helpers for folder data (documents, subfolders, collections) - widget-specific cache
-function getCachedFolderData(folderId: string) {
+// Read user tags from localStorage for UI (when store not yet loaded)
+const TAGS_STORAGE_KEY = 'craftboard-tags'
+const availableTags = computed(() => {
+  if (userTags.value.length > 0) return userTags.value
   try {
-    const cached = localStorage.getItem(FOLDER_DATA_CACHE_PREFIX + folderId)
-    if (!cached) return null
-
-    const { data, timestamp } = JSON.parse(cached)
-    const cacheExpiryMs = getCacheExpiryMs()
-    if (cacheExpiryMs === 0) return null
-
-    const cacheAge = Date.now() - timestamp
-    if (cacheAge > cacheExpiryMs) {
-      localStorage.removeItem(FOLDER_DATA_CACHE_PREFIX + folderId)
-      return null
-    }
-
-    return data
+    const stored = localStorage.getItem(TAGS_STORAGE_KEY)
+    if (stored) return JSON.parse(stored) as string[]
   } catch {
-    return null
+    // Ignore
   }
-}
-
-function setCachedFolderData(
-  folderId: string,
-  data: {
-    documents: CraftDocument[]
-    subfolders: CraftFolder[]
-    collections: Array<{ id: string; name: string; documentId: string }>
-  },
-) {
-  try {
-    localStorage.setItem(
-      FOLDER_DATA_CACHE_PREFIX + folderId,
-      JSON.stringify({ data, timestamp: Date.now() }),
-    )
-  } catch {
-    // Ignore cache errors
-  }
-}
-
-function clearCache() {
-  localStorage.removeItem(FOLDERS_CACHE_KEY)
-  // Clear all folder data caches
-  Object.keys(localStorage).forEach((key) => {
-    if (key.startsWith(FOLDER_DATA_CACHE_PREFIX)) {
-      localStorage.removeItem(key)
-    }
-  })
-}
+  return []
+})
 
 // State
-const selectedFolderData = ref<{
-  documents: CraftDocument[]
-  subfolders: CraftFolder[]
-  collections: Array<{ id: string; name: string; documentId: string }>
-}>({
-  documents: [],
-  subfolders: [],
-  collections: [],
-})
-const isLoading = ref(false)
 const error = ref<string | null>(null)
 const isConfiguring = ref(false)
-const totalApiCalls = ref(0)
-const completedApiCalls = ref(0)
+const configStep = ref<'mode' | 'select'>('mode')
+const showLabels = ref(true)
+const selectedNode = ref<GraphNode | null>(null)
 
 const hasApiConfig = computed(() => !!getApiUrl())
-const isConfigured = computed(() => !!props.widget.data?.rootId)
 
-// Root selection
+// Widget mode and configuration
+const widgetMode = computed(() => props.widget.data?.mode as 'folder' | 'tag' | undefined)
+const isConfigured = computed(() => {
+  if (widgetMode.value === 'folder') return !!props.widget.data?.rootId
+  if (widgetMode.value === 'tag') return !!props.widget.data?.tagName
+  return false
+})
+
+// Folder mode props
 const rootId = computed(() => props.widget.data?.rootId)
-const rootType = computed(() => 'folder' as const)
 const rootTitle = computed(() => props.widget.data?.rootTitle || '')
+
+// Tag mode props
+const selectedTagName = computed(() => props.widget.data?.tagName as string | undefined)
 
 // Graph types
 interface GraphNode {
   id: string
-  type: 'document' | 'folder' | 'collection' | 'tag'
+  type: 'document' | 'folder' | 'collection' | 'tag' | 'dailyNote'
   label: string
   data: CraftDocument | CraftFolder | any
 }
@@ -144,78 +95,99 @@ interface GraphLink {
   type: 'contains' | 'hasCollection' | 'hasTag'
 }
 
-// Find root folder in the folders list
-const findRootFolder = (folderList: CraftFolder[]): CraftFolder | null => {
-  if (!rootId.value) return null
-  for (const folder of folderList) {
-    if (folder.id === rootId.value) return folder
-    if (folder.folders) {
-      const found = findRootFolder(folder.folders)
-      if (found) return found
-    }
+// Helper to format daily note date
+const formatDailyNoteLabel = (dateStr: string): string => {
+  try {
+    const date = new Date(dateStr + 'T00:00:00')
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  } catch {
+    return dateStr
   }
-  return null
 }
 
-// Computed graph nodes and links filtered by root
-const graphNodes = computed<GraphNode[]>(() => {
+// Find folder and all its descendants
+const findFolderWithDescendants = (
+  folderList: CraftFolder[],
+  targetId: string,
+): { folder: CraftFolder | null; allFolderIds: Set<string> } => {
+  const allFolderIds = new Set<string>()
+
+  const findFolder = (folders: CraftFolder[]): CraftFolder | null => {
+    for (const folder of folders) {
+      if (folder.id === targetId) {
+        // Found the target, collect all descendant IDs
+        const collectDescendants = (f: CraftFolder) => {
+          allFolderIds.add(f.id)
+          if (f.folders) {
+            f.folders.forEach(collectDescendants)
+          }
+        }
+        collectDescendants(folder)
+        return folder
+      }
+      if (folder.folders) {
+        const found = findFolder(folder.folders)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  const folder = findFolder(folderList)
+  return { folder, allFolderIds }
+}
+
+// Computed graph nodes for FOLDER mode
+const graphNodesForFolder = computed<GraphNode[]>(() => {
   if (!rootId.value) return []
 
   const nodes: GraphNode[] = []
   const nodeIds = new Set<string>()
 
-  // Find root folder in the main folders list
-  const rootFolder = findRootFolder(folders.value)
+  const { folder: rootFolder, allFolderIds } = findFolderWithDescendants(
+    folders.value,
+    rootId.value,
+  )
   if (!rootFolder) return []
 
-  // Add root folder
-  nodes.push({
-    id: rootFolder.id,
-    type: 'folder',
-    label: rootFolder.name,
-    data: rootFolder,
-  })
-  nodeIds.add(rootFolder.id)
-
-  // Add subfolders from selectedFolderData
-  const addSubfolders = (subfolders: CraftFolder[]) => {
-    subfolders.forEach((subfolder) => {
-      if (!nodeIds.has(subfolder.id)) {
-        nodes.push({
-          id: subfolder.id,
-          type: 'folder',
-          label: subfolder.name,
-          data: subfolder,
-        })
-        nodeIds.add(subfolder.id)
-        // Recursively add nested subfolders if they exist
-        if (subfolder.folders && subfolder.folders.length > 0) {
-          addSubfolders(subfolder.folders)
-        }
-      }
-    })
+  // Add folder nodes
+  const addFolderNodes = (folder: CraftFolder) => {
+    if (!nodeIds.has(folder.id)) {
+      nodes.push({
+        id: folder.id,
+        type: 'folder',
+        label: folder.name,
+        data: folder,
+      })
+      nodeIds.add(folder.id)
+    }
+    if (folder.folders) {
+      folder.folders.forEach(addFolderNodes)
+    }
   }
-  addSubfolders(selectedFolderData.value.subfolders)
+  addFolderNodes(rootFolder)
 
-  // Add documents from selectedFolderData
-  selectedFolderData.value.documents
-    .filter((doc) => !doc.dailyNoteDate)
-    .forEach((doc) => {
-      if (!nodeIds.has(doc.id)) {
-        nodes.push({
-          id: doc.id,
-          type: 'document',
-          label: doc.title,
-          data: doc,
-        })
-        nodeIds.add(doc.id)
-      }
-    })
+  // Add documents that belong to these folders
+  documents.value.forEach((doc) => {
+    if (doc.folderId && allFolderIds.has(doc.folderId) && !nodeIds.has(doc.id)) {
+      const label = doc.dailyNoteDate ? formatDailyNoteLabel(doc.dailyNoteDate) : doc.title
+      nodes.push({
+        id: doc.id,
+        type: doc.dailyNoteDate ? 'dailyNote' : 'document',
+        label: label,
+        data: doc,
+      })
+      nodeIds.add(doc.id)
+    }
+  })
 
-  // Add collections from selectedFolderData
+  // Add collections for documents in the graph
   const documentIdsInGraph = new Set(nodes.filter((n) => n.type === 'document').map((n) => n.id))
-
-  selectedFolderData.value.collections.forEach((collection) => {
+  collections.value.forEach((collection) => {
     if (documentIdsInGraph.has(collection.documentId) && !nodeIds.has(collection.id)) {
       nodes.push({
         id: collection.id,
@@ -227,15 +199,14 @@ const graphNodes = computed<GraphNode[]>(() => {
     }
   })
 
-  // Add tag nodes for tags used by documents in this graph
-  const tagsUsedInGraph = new Set<string>()
+  // Add tag nodes for documents in this graph
+  const tagsInGraph = new Set<string>()
   tagDocuments.value.forEach((docInfo) => {
     if (documentIdsInGraph.has(docInfo.documentId)) {
-      docInfo.tags.forEach((tag) => tagsUsedInGraph.add(tag))
+      docInfo.tags.forEach((tag) => tagsInGraph.add(tag))
     }
   })
-
-  tagsUsedInGraph.forEach((tag) => {
+  tagsInGraph.forEach((tag) => {
     const tagNodeId = `tag:${tag}`
     if (!nodeIds.has(tagNodeId)) {
       nodes.push({
@@ -251,69 +222,48 @@ const graphNodes = computed<GraphNode[]>(() => {
   return nodes
 })
 
-const graphLinks = computed<GraphLink[]>(() => {
+// Computed graph links for FOLDER mode
+const graphLinksForFolder = computed<GraphLink[]>(() => {
   if (!rootId.value) return []
 
   const links: GraphLink[] = []
-  const nodeIds = new Set(graphNodes.value.map((n) => n.id))
+  const nodeIds = new Set(graphNodesForFolder.value.map((n) => n.id))
 
-  // Add folder-document links
-  graphNodes.value.forEach((node) => {
-    if (node.type === 'document') {
-      const doc = node.data as CraftDocument
-      if (doc.folderId && nodeIds.has(doc.folderId)) {
-        links.push({
-          source: doc.folderId,
-          target: doc.id,
-          type: 'contains',
-        })
-      }
-    } else if (node.type === 'folder') {
-      const folder = node.data as CraftFolder
-      // Check subfolders from selectedFolderData
-      if (folder.folders) {
-        folder.folders.forEach((subfolder) => {
-          if (nodeIds.has(subfolder.id)) {
-            links.push({
-              source: folder.id,
-              target: subfolder.id,
-              type: 'contains',
-            })
-          }
-        })
-      }
+  // Folder hierarchy links
+  const addFolderLinks = (folder: CraftFolder) => {
+    if (folder.folders) {
+      folder.folders.forEach((subfolder) => {
+        if (nodeIds.has(folder.id) && nodeIds.has(subfolder.id)) {
+          links.push({ source: folder.id, target: subfolder.id, type: 'contains' })
+        }
+        addFolderLinks(subfolder)
+      })
+    }
+  }
+  const { folder: rootFolder } = findFolderWithDescendants(folders.value, rootId.value)
+  if (rootFolder) addFolderLinks(rootFolder)
+
+  // Folder -> Document links
+  documents.value.forEach((doc) => {
+    if (doc.folderId && nodeIds.has(doc.folderId) && nodeIds.has(doc.id)) {
+      links.push({ source: doc.folderId, target: doc.id, type: 'contains' })
     }
   })
 
-  // Add document-collection links
-  graphNodes.value.forEach((node) => {
-    if (node.type === 'collection') {
-      const collection = node.data as { id: string; name: string; documentId: string }
-      if (
-        collection.documentId &&
-        nodeIds.has(collection.documentId) &&
-        nodeIds.has(collection.id)
-      ) {
-        links.push({
-          source: collection.documentId,
-          target: collection.id,
-          type: 'hasCollection',
-        })
-      }
+  // Document -> Collection links
+  collections.value.forEach((collection) => {
+    if (nodeIds.has(collection.documentId) && nodeIds.has(collection.id)) {
+      links.push({ source: collection.documentId, target: collection.id, type: 'hasCollection' })
     }
   })
 
-  // Add document-tag links
+  // Document -> Tag links
   tagDocuments.value.forEach((docInfo) => {
     if (nodeIds.has(docInfo.documentId)) {
       docInfo.tags.forEach((tag) => {
         const tagNodeId = `tag:${tag}`
         if (nodeIds.has(tagNodeId)) {
-          links.push({
-            source: docInfo.documentId,
-            target: tagNodeId,
-            type: 'hasTag',
-          })
+          links.push({ source: docInfo.documentId, target: tagNodeId, type: 'hasTag' })
         }
       })
     }
@@ -322,68 +272,132 @@ const graphLinks = computed<GraphLink[]>(() => {
   return links
 })
 
+// Computed graph nodes for TAG mode
+const graphNodesForTag = computed<GraphNode[]>(() => {
+  if (!selectedTagName.value) return []
+
+  const nodes: GraphNode[] = []
+  const nodeIds = new Set<string>()
+
+  // Add the selected tag as the central node
+  const tagNodeId = `tag:${selectedTagName.value}`
+  nodes.push({
+    id: tagNodeId,
+    type: 'tag',
+    label: `#${selectedTagName.value}`,
+    data: { tag: selectedTagName.value },
+  })
+  nodeIds.add(tagNodeId)
+
+  // Add all documents that have this tag
+  tagDocuments.value.forEach((docInfo) => {
+    if (docInfo.tags.includes(selectedTagName.value!) && !nodeIds.has(docInfo.documentId)) {
+      // Get full document info for dailyNoteDate
+      const fullDoc = documents.value.find((d) => d.id === docInfo.documentId)
+      const dailyNoteDate = docInfo.dailyNoteDate || fullDoc?.dailyNoteDate
+      const title = fullDoc?.title || docInfo.title
+      const label = dailyNoteDate ? formatDailyNoteLabel(dailyNoteDate) : title
+
+      nodes.push({
+        id: docInfo.documentId,
+        type: dailyNoteDate ? 'dailyNote' : 'document',
+        label: label,
+        data: fullDoc || { id: docInfo.documentId, title },
+      })
+      nodeIds.add(docInfo.documentId)
+    }
+  })
+
+  // Add other tags that appear in these documents
+  const documentIdsInGraph = new Set(nodes.filter((n) => n.type === 'document').map((n) => n.id))
+  tagDocuments.value.forEach((docInfo) => {
+    if (documentIdsInGraph.has(docInfo.documentId)) {
+      docInfo.tags.forEach((tag) => {
+        if (tag !== selectedTagName.value) {
+          const otherTagNodeId = `tag:${tag}`
+          if (!nodeIds.has(otherTagNodeId)) {
+            nodes.push({
+              id: otherTagNodeId,
+              type: 'tag',
+              label: `#${tag}`,
+              data: { tag },
+            })
+            nodeIds.add(otherTagNodeId)
+          }
+        }
+      })
+    }
+  })
+
+  return nodes
+})
+
+// Computed graph links for TAG mode
+const graphLinksForTag = computed<GraphLink[]>(() => {
+  if (!selectedTagName.value) return []
+
+  const links: GraphLink[] = []
+  const nodeIds = new Set(graphNodesForTag.value.map((n) => n.id))
+
+  tagDocuments.value.forEach((docInfo) => {
+    if (nodeIds.has(docInfo.documentId)) {
+      docInfo.tags.forEach((tag) => {
+        const tagNodeId = `tag:${tag}`
+        if (nodeIds.has(tagNodeId)) {
+          links.push({ source: docInfo.documentId, target: tagNodeId, type: 'hasTag' })
+        }
+      })
+    }
+  })
+
+  return links
+})
+
+// Final computed nodes and links based on mode
+const graphNodes = computed<GraphNode[]>(() => {
+  if (widgetMode.value === 'tag') return graphNodesForTag.value
+  if (widgetMode.value === 'folder') return graphNodesForFolder.value
+  return []
+})
+
+const graphLinks = computed<GraphLink[]>(() => {
+  if (widgetMode.value === 'tag') return graphLinksForTag.value
+  if (widgetMode.value === 'folder') return graphLinksForFolder.value
+  return []
+})
+
 // D3 rendering
 const svgRef = ref<SVGSVGElement | null>(null)
-let simulation: d3.Simulation<D3Node, D3Link> | null = null
+let simulation: d3.Simulation<any, any> | null = null
 let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null
 
-interface D3Node extends GraphNode {
-  x?: number
-  y?: number
-  fx?: number | null
-  fy?: number | null
-}
+// Color constants from GraphView
+import { HEADER_COLORS } from '../../constants/colors'
 
-interface D3Link extends d3.SimulationLinkDatum<D3Node> {
-  source: D3Node | string
-  target: D3Node | string
-  type: string
-}
-
-// Use widget header colors - extract solid colors from gradients
-const HEADER_COLORS = [
-  { name: 'Indigo', gradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' },
-  { name: 'Purple', gradient: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)' },
-  { name: 'Pink', gradient: 'linear-gradient(135deg, #ec4899 0%, #be185d 100%)' },
-  { name: 'Rose', gradient: 'linear-gradient(135deg, #f43f5e 0%, #be123c 100%)' },
-  { name: 'Orange', gradient: 'linear-gradient(135deg, #f97316 0%, #c2410c 100%)' },
-  { name: 'Amber', gradient: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)' },
-  { name: 'Green', gradient: 'linear-gradient(135deg, #22c55e 0%, #15803d 100%)' },
-  { name: 'Teal', gradient: 'linear-gradient(135deg, #14b8a6 0%, #0f766e 100%)' },
-  { name: 'Cyan', gradient: 'linear-gradient(135deg, #22d3ee 0%, #0891b2 100%)' },
-  { name: 'Blue', gradient: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' },
-  { name: 'Violet', gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)' },
-  { name: 'Fuchsia', gradient: 'linear-gradient(135deg, #d946ef 0%, #a21caf 100%)' },
-]
-
-// Extract first color from gradient
-const extractColor = (gradient: string): string => {
+function extractColor(gradient: string): string {
   const match = gradient.match(/#[0-9a-fA-F]{6}/)
   return match ? match[0] : '#6366f1'
 }
 
 const nodeColors = {
-  document: extractColor(HEADER_COLORS[0].gradient), // Indigo
-  folder: extractColor(HEADER_COLORS[1].gradient), // Purple
-  collection: extractColor(HEADER_COLORS[6].gradient), // Green
-  dailyNote: extractColor(HEADER_COLORS[4].gradient), // Orange
-  tag: extractColor(HEADER_COLORS[8].gradient), // Cyan
-  root: extractColor(HEADER_COLORS[1].gradient), // Purple
+  document: extractColor(HEADER_COLORS[0]!.gradient),
+  folder: extractColor(HEADER_COLORS[1]!.gradient),
+  collection: extractColor(HEADER_COLORS[6]!.gradient),
+  dailyNote: extractColor(HEADER_COLORS[4]!.gradient),
+  tag: extractColor(HEADER_COLORS[8]!.gradient),
+  root: extractColor(HEADER_COLORS[1]!.gradient),
 }
 
 function renderGraph() {
   if (!svgRef.value || graphNodes.value.length === 0 || !d3Available) return
 
-  const width = svgRef.value.clientWidth || 400
-  const height = svgRef.value.clientHeight || 300
-
   const svg = d3.select(svgRef.value)
   svg.selectAll('*').remove()
 
-  const nodes: D3Node[] = [...graphNodes.value]
-  const links: D3Link[] = graphLinks.value.map((link) => ({ ...link, type: link.type }))
+  const width = svgRef.value.clientWidth || 400
+  const height = svgRef.value.clientHeight || 300
 
-  const g = svg.append('g').attr('class', 'graph-content')
+  const g = svg.append('g')
 
   zoomBehavior = d3
     .zoom<SVGSVGElement, unknown>()
@@ -394,260 +408,218 @@ function renderGraph() {
 
   svg.call(zoomBehavior)
 
+  const nodes = graphNodes.value.map((n) => ({ ...n }))
+  const links = graphLinks.value.map((l) => ({
+    source: typeof l.source === 'string' ? l.source : l.source,
+    target: typeof l.target === 'string' ? l.target : l.target,
+    type: l.type,
+  }))
+
   simulation = d3
-    .forceSimulation<D3Node, D3Link>(nodes)
+    .forceSimulation(nodes)
     .force(
       'link',
       d3
-        .forceLink<D3Node, D3Link>(links)
-        .id((d) => d.id)
-        .distance(70),
+        .forceLink(links)
+        .id((d: any) => d.id)
+        .distance(60),
     )
-    .force('charge', d3.forceManyBody<D3Node>().strength(-120))
-    .force('center', d3.forceCenter<D3Node>(width / 2, height / 2))
-    .force('collision', d3.forceCollide<D3Node>().radius(24))
+    .force('charge', d3.forceManyBody().strength(-150))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide().radius(25))
 
   const link = g
     .append('g')
+    .attr('stroke', 'var(--border-secondary)')
+    .attr('stroke-opacity', 0.6)
     .selectAll('line')
     .data(links)
     .join('line')
-    .attr('stroke', '#6b7280')
-    .attr('stroke-width', 1)
-    .attr('stroke-opacity', 0.6)
+    .attr('stroke-width', 1.5)
 
-  const node = g
+  const nodeGroup = g
     .append('g')
     .selectAll('g')
     .data(nodes)
     .join('g')
-    .attr('class', 'node')
-    .style('cursor', 'pointer')
-    .on('click', async (event, d) => {
-      event.stopPropagation()
-      await handleNodeClick(d)
-    })
+    .attr('cursor', 'pointer')
     .call(
       d3
-        .drag<SVGGElement, D3Node>()
-        .on('start', dragstarted)
-        .on('drag', dragged)
-        .on('end', dragended),
+        .drag<SVGGElement, any>()
+        .on('start', (event, d) => {
+          if (!event.active) simulation?.alphaTarget(0.3).restart()
+          d.fx = d.x
+          d.fy = d.y
+        })
+        .on('drag', (event, d) => {
+          d.fx = event.x
+          d.fy = event.y
+        })
+        .on('end', (event, d) => {
+          if (!event.active) simulation?.alphaTarget(0)
+          d.fx = null
+          d.fy = null
+        }) as any,
     )
 
-  node.each(function (d: D3Node) {
-    const g = d3.select(this as SVGGElement)
-    const isRoot = d.id === rootId.value
-    const nodeType = d.type as keyof typeof nodeColors
-    const color = isRoot ? nodeColors.root : nodeColors[nodeType] || '#6b7280'
+  nodeGroup.each(function (d: any) {
+    const group = d3.select(this)
+    const isRoot = d.id === rootId.value || d.id === `tag:${selectedTagName.value}`
+    const color = nodeColors[d.type as keyof typeof nodeColors] || '#6b7280'
 
     const radiusMap: Record<string, number> = {
       document: 8,
       folder: 10,
       collection: 9,
+      dailyNote: 8,
       tag: 7,
     }
     const radius = isRoot ? 12 : radiusMap[d.type] || 8
 
-    // Extract stroke color from the fill color (lighter version)
-    const strokeColor = color.replace('#', '')
-    const r = parseInt(strokeColor.substring(0, 2), 16)
-    const gVal = parseInt(strokeColor.substring(2, 4), 16)
-    const b = parseInt(strokeColor.substring(4, 6), 16)
-    const lighterColor = `rgba(${Math.min(255, r + 40)}, ${Math.min(255, gVal + 40)}, ${Math.min(255, b + 40)}, 0.5)`
-
-    g.append('circle')
+    group
+      .append('circle')
       .attr('r', radius)
       .attr('fill', color)
-      .attr('stroke', lighterColor)
+      .attr('stroke', '#fff')
       .attr('stroke-width', isRoot ? 3 : 2)
 
     if (showLabels.value) {
-      g.append('text')
+      group
+        .append('text')
         .text(d.label)
-        .attr('dy', radius + 14)
+        .attr('x', 0)
+        .attr('y', radius + 12)
         .attr('text-anchor', 'middle')
-        .attr('fill', 'var(--text-primary)')
         .attr('font-size', '10px')
-        .attr('pointer-events', 'none')
+        .attr('fill', 'var(--text-secondary)')
+        .style('pointer-events', 'none')
+    }
+  })
+
+  nodeGroup.on('click', async (_event, d: any) => {
+    // Show modal for the clicked node
+    const clickedNode = graphNodes.value.find((n) => n.id === d.id)
+    if (clickedNode) {
+      selectedNode.value = clickedNode
     }
   })
 
   simulation.on('tick', () => {
     link
-      .attr('x1', (d) => (d.source as D3Node).x || 0)
-      .attr('y1', (d) => (d.source as D3Node).y || 0)
-      .attr('x2', (d) => (d.target as D3Node).x || 0)
-      .attr('y2', (d) => (d.target as D3Node).y || 0)
+      .attr('x1', (d: any) => d.source.x)
+      .attr('y1', (d: any) => d.source.y)
+      .attr('x2', (d: any) => d.target.x)
+      .attr('y2', (d: any) => d.target.y)
 
-    node.attr('transform', (d) => `translate(${d.x || 0},${d.y || 0})`)
+    nodeGroup.attr('transform', (d: any) => `translate(${d.x},${d.y})`)
   })
+
+  // Initial zoom to fit
+  setTimeout(() => fitAll(), 100)
 }
-
-function dragstarted(event: d3.D3DragEvent<SVGGElement, D3Node, D3Node>) {
-  if (!event.active && simulation) simulation.alphaTarget(0.3).restart()
-  event.subject.fx = event.subject.x
-  event.subject.fy = event.subject.y
-}
-
-function dragged(event: d3.D3DragEvent<SVGGElement, D3Node, D3Node>) {
-  event.subject.fx = event.x
-  event.subject.fy = event.y
-}
-
-function dragended(event: d3.D3DragEvent<SVGGElement, D3Node, D3Node>) {
-  if (!event.active && simulation) simulation.alphaTarget(0)
-  event.subject.fx = null
-  event.subject.fy = null
-}
-
-async function handleNodeClick(node: D3Node) {
-  const spaceId = getSpaceId()
-  if (!spaceId) {
-    alert('Could not retrieve Space ID. Please configure it manually in Settings.')
-    return
-  }
-
-  const preference = getCraftLinkPreference()
-
-  switch (node.type) {
-    case 'document': {
-      const doc = node.data as CraftDocument
-      if (preference === 'web') {
-        // Use clickableLink if available (contains correct document ID and share token)
-        if (doc.clickableLink) {
-          window.open(doc.clickableLink, '_blank')
-          return
-        }
-        // Fallback to constructing web link
-        const webLink = buildCraftWebLink(node.id, spaceId)
-        if (webLink) {
-          window.open(webLink, '_blank')
-          return
-        }
-      }
-      // Fallback to app link
-      await openCraftLink(node.id, node.id)
-      break
-    }
-    case 'folder': {
-      // Folders only support app links
-      const folderLink = `craftdocs://openfolder?folderId=${node.id}&spaceId=${spaceId}&title=${encodeURIComponent(node.label)}`
-      window.location.href = folderLink
-      break
-    }
-    case 'collection': {
-      const collection = node.data as { documentId?: string }
-      if (collection.documentId) {
-        // Find the document to get its clickableLink
-        const doc = selectedFolderData.value.documents.find((d) => d.id === collection.documentId)
-        if (preference === 'web') {
-          // Use clickableLink if available
-          if (doc?.clickableLink) {
-            window.open(doc.clickableLink, '_blank')
-            return
-          }
-          // Fallback to constructing web link
-          const webLink = buildCraftWebLink(collection.documentId, spaceId)
-          if (webLink) {
-            window.open(webLink, '_blank')
-            return
-          }
-        }
-        // Fallback to app link
-        await openCraftLink(collection.documentId, collection.documentId)
-      }
-      break
-    }
-  }
-}
-
-const showLabels = ref(true)
 
 function centerGraph() {
   if (!svgRef.value || !zoomBehavior) return
   const svg = d3.select(svgRef.value)
-  svg.transition().duration(750).call(zoomBehavior.transform, d3.zoomIdentity)
+  const width = svgRef.value.clientWidth || 400
+  const height = svgRef.value.clientHeight || 300
+  svg
+    .transition()
+    .duration(300)
+    .call(zoomBehavior.transform, d3.zoomIdentity.translate(width / 2, height / 2))
 }
 
 function fitAll() {
-  if (!svgRef.value || !zoomBehavior || !simulation) return
-
+  if (!svgRef.value || !zoomBehavior || graphNodes.value.length === 0) return
   const svg = d3.select(svgRef.value)
-  const simulationNodes = simulation.nodes()
+  const width = svgRef.value.clientWidth || 400
+  const height = svgRef.value.clientHeight || 300
 
-  if (simulationNodes.length === 0) return
+  const nodes = graphNodes.value
+  if (nodes.length === 0) return
 
   let minX = Infinity,
     maxX = -Infinity,
     minY = Infinity,
     maxY = -Infinity
-
-  simulationNodes.forEach((d) => {
-    if (d.x !== undefined && d.y !== undefined) {
-      minX = Math.min(minX, d.x)
-      maxX = Math.max(maxX, d.x)
-      minY = Math.min(minY, d.y)
-      maxY = Math.max(maxY, d.y)
+  nodes.forEach((n: any) => {
+    if (n.x !== undefined && n.y !== undefined) {
+      minX = Math.min(minX, n.x)
+      maxX = Math.max(maxX, n.x)
+      minY = Math.min(minY, n.y)
+      maxY = Math.max(maxY, n.y)
     }
   })
 
-  if (!isFinite(minX)) return
-
-  const width = svgRef.value.clientWidth || 400
-  const height = svgRef.value.clientHeight || 300
+  if (minX === Infinity) return
 
   const padding = 50
   const graphWidth = maxX - minX + padding * 2
   const graphHeight = maxY - minY + padding * 2
-
-  const scale = Math.min(width / graphWidth, height / graphHeight, 4)
-
+  const scale = Math.min(width / graphWidth, height / graphHeight, 1.5)
   const centerX = (minX + maxX) / 2
   const centerY = (minY + maxY) / 2
 
-  const transform = d3.zoomIdentity
-    .translate(width / 2, height / 2)
-    .scale(scale)
-    .translate(-centerX, -centerY)
-
-  svg.transition().duration(750).call(zoomBehavior.transform, transform)
+  svg
+    .transition()
+    .duration(300)
+    .call(
+      zoomBehavior.transform,
+      d3.zoomIdentity
+        .translate(width / 2 - centerX * scale, height / 2 - centerY * scale)
+        .scale(scale),
+    )
 }
 
-// Flatten all folders recursively and sort alphabetically
+// Flatten folders for selection list
 const allFoldersList = computed(() => {
-  const flattenFolders = (folderList: CraftFolder[]): Array<{ id: string; name: string }> => {
-    const result: Array<{ id: string; name: string }> = []
-
-    const traverse = (folders: CraftFolder[]) => {
-      folders.forEach((folder) => {
-        result.push({ id: folder.id, name: folder.name })
-        if (folder.folders && folder.folders.length > 0) {
-          traverse(folder.folders)
-        }
-      })
-    }
-
-    traverse(folderList)
-    return result.sort((a, b) => a.name.localeCompare(b.name))
+  const flattenFolders = (
+    folderList: CraftFolder[],
+    depth = 0,
+  ): Array<{ id: string; name: string; depth: number }> => {
+    const result: Array<{ id: string; name: string; depth: number }> = []
+    folderList.forEach((folder) => {
+      result.push({ id: folder.id, name: folder.name, depth })
+      if (folder.folders && folder.folders.length > 0) {
+        result.push(...flattenFolders(folder.folders, depth + 1))
+      }
+    })
+    return result
   }
-
   return flattenFolders(folders.value)
 })
 
+// Load all data (shared with GraphView)
+const loadAllData = async (forceRefresh = false) => {
+  if (!hasApiConfig.value) {
+    error.value = 'Please configure your API URL in Settings'
+    return
+  }
+
+  try {
+    await Promise.all([
+      graphApiStore.initializeGraph(forceRefresh),
+      graphApiStore.fetchTagRelations(forceRefresh),
+    ])
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to fetch data'
+    console.error('Error fetching data:', e)
+  }
+}
+
+// Mode selection
+const selectMode = (mode: 'folder' | 'tag') => {
+  emit('update:data', { ...props.widget.data, mode })
+  configStep.value = 'select'
+}
+
+// Folder selection
 const selectRoot = async (folder: { id: string; name: string }) => {
-  emit('update:data', {
-    rootId: folder.id,
-    rootType: 'folder',
-    rootTitle: folder.name,
-  })
+  emit('update:data', { mode: 'folder', rootId: folder.id, rootTitle: folder.name })
   emit('update:title', folder.name)
   isConfiguring.value = false
+  configStep.value = 'mode'
 
-  // Load folder data after selection
-  await loadFolderData(folder.id)
-
-  // Force render after a short delay to ensure DOM is ready
   await nextTick()
   setTimeout(() => {
     if (d3Available && graphNodes.value.length > 0 && svgRef.value) {
@@ -656,230 +628,39 @@ const selectRoot = async (folder: { id: string; name: string }) => {
   }, 100)
 }
 
-const reconfigure = async () => {
+// Tag selection
+const selectTag = async (tag: string) => {
+  emit('update:data', { mode: 'tag', tagName: tag })
+  emit('update:title', `#${tag}`)
+  isConfiguring.value = false
+  configStep.value = 'mode'
+
+  await nextTick()
+  setTimeout(() => {
+    if (d3Available && graphNodes.value.length > 0 && svgRef.value) {
+      renderGraph()
+    }
+  }, 100)
+}
+
+const reconfigure = () => {
   isConfiguring.value = true
-  // Always fetch folders fresh when reconfiguring
-  if (hasApiConfig.value) {
-    await loadFolders(true)
-  }
+  configStep.value = 'mode'
 }
 
 const refresh = async () => {
-  if (rootId.value) {
-    // Clear cache for current folder and refresh tags
-    localStorage.removeItem(FOLDER_DATA_CACHE_PREFIX + rootId.value)
-    await Promise.all([loadFolderData(rootId.value, true), graphApiStore.refreshTagRelations()])
-  } else {
-    // Clear folders cache and reload
-    localStorage.removeItem(FOLDERS_CACHE_KEY)
-    await loadFolders(true)
+  await loadAllData(true)
+  await nextTick()
+  if (d3Available && graphNodes.value.length > 0 && svgRef.value) {
+    renderGraph()
   }
 }
 
-// Load folders list (for selection/search)
-const loadFolders = async (forceRefresh = false) => {
-  if (!hasApiConfig.value) {
-    error.value = 'Please configure your API URL in Settings'
-    return
-  }
-
-  isLoading.value = true
-  totalApiCalls.value = 2
-  completedApiCalls.value = 0
-  try {
-    // Load folders and tags in parallel
-    await Promise.all([
-      graphApiStore.initializeGraph(forceRefresh).then(() => {
-        completedApiCalls.value++
-      }),
-      graphApiStore.fetchTagRelations(forceRefresh).then(() => {
-        completedApiCalls.value++
-      }),
-    ])
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to fetch folders'
-    console.error('Error fetching folders:', e)
-    completedApiCalls.value = totalApiCalls.value
-  } finally {
-    isLoading.value = false
-  }
-}
-
-// Load data for a specific folder (documents, subfolders, collections)
-const loadFolderData = async (folderId: string, forceRefresh = false) => {
-  if (!hasApiConfig.value) {
-    error.value = 'Please configure your API URL in Settings'
-    return
-  }
-  // Check cache first if not forcing refresh
-  if (!forceRefresh) {
-    const cached = getCachedFolderData(folderId)
-    if (cached) {
-      selectedFolderData.value = cached
-      await nextTick()
-      await nextTick() // Double nextTick for computed updates
-      if (d3Available && graphNodes.value.length > 0 && svgRef.value) {
-        setTimeout(() => {
-          if (svgRef.value) {
-            renderGraph()
-          }
-        }, 50)
-      }
-      return
-    }
-  }
-
-  isLoading.value = true
-  error.value = null
-
-  // Find the folder in the folders list
-  const findFolder = (folderList: CraftFolder[]): CraftFolder | null => {
-    for (const folder of folderList) {
-      if (folder.id === folderId) return folder
-      if (folder.folders) {
-        const found = findFolder(folder.folders)
-        if (found) return found
-      }
-    }
-    return null
-  }
-
-  const targetFolder = findFolder(folders.value)
-  if (!targetFolder) {
-    error.value = 'Folder not found'
-    isLoading.value = false
-    return
-  }
-
-  // Count API calls needed (documents + collections + subfolders)
-  const countSubfolders = (folder: CraftFolder): number => {
-    if (!folder.folders || folder.folders.length === 0) return 0
-    let count = folder.folders.length
-    folder.folders.forEach((subfolder) => {
-      count += countSubfolders(subfolder)
-    })
-    return count
-  }
-
-  const subfolderCount = countSubfolders(targetFolder)
-  totalApiCalls.value = 1 + (subfolderCount > 0 ? subfolderCount : 0) + 1 // documents + subfolders + collections
-  completedApiCalls.value = 0
-
-  try {
-    const specialLocations: Record<string, 'unsorted' | 'trash' | 'templates' | 'daily_notes'> = {
-      unsorted: 'unsorted',
-      trash: 'trash',
-      templates: 'templates',
-      daily_notes: 'daily_notes',
-    }
-
-    const location = specialLocations[folderId]
-
-    // Fetch documents for this folder
-    const documentsResult = await fetchDocuments(
-      location ? { location, fetchMetadata: true } : { folderId: folderId, fetchMetadata: true },
-    )
-    completedApiCalls.value++
-
-    const allDocuments: CraftDocument[] = []
-    documentsResult.items.forEach((doc) => {
-      allDocuments.push({ ...doc, folderId: folderId })
-    })
-
-    // Recursively fetch documents for subfolders
-    // The API already returns nested folder structure, we just need to fetch documents
-    const fetchSubfolderDocuments = async (folder: CraftFolder) => {
-      if (!folder.folders || folder.folders.length === 0) {
-        return
-      }
-
-      for (const subfolder of folder.folders) {
-        // Fetch documents for this subfolder
-        const subfolderDocs = await fetchDocuments({
-          folderId: subfolder.id,
-          fetchMetadata: true,
-        })
-        completedApiCalls.value++
-        subfolderDocs.items.forEach((doc) => {
-          allDocuments.push({ ...doc, folderId: subfolder.id })
-        })
-
-        // Recursively fetch documents for nested subfolders
-        if (subfolder.folders && subfolder.folders.length > 0) {
-          await fetchSubfolderDocuments(subfolder)
-        }
-      }
-    }
-
-    // The API already returns nested folder structure in targetFolder.folders
-    // We just need to fetch documents for all subfolders
-    if (!location && targetFolder.folders && targetFolder.folders.length > 0) {
-      await fetchSubfolderDocuments(targetFolder)
-    }
-
-    // Use the nested structure from the API
-    const allSubfolders = targetFolder.folders || []
-
-    // Fetch collections for documents in this folder tree
-    const allCollections: Array<{ id: string; name: string; documentId: string }> = []
-    const documentIds = new Set(allDocuments.map((d) => d.id))
-
-    if (documentIds.size > 0) {
-      try {
-        const collectionsList = await listCollections()
-        completedApiCalls.value++
-        collectionsList.forEach((collection) => {
-          if (documentIds.has(collection.documentId)) {
-            allCollections.push({
-              id: collection.id,
-              name: collection.name,
-              documentId: collection.documentId,
-            })
-          }
-        })
-      } catch (e) {
-        console.error('Error fetching collections:', e)
-        completedApiCalls.value++
-        // Continue without collections
-      }
-    }
-
-    selectedFolderData.value = {
-      documents: allDocuments,
-      subfolders: allSubfolders,
-      collections: allCollections,
-    }
-
-    // Cache the folder data
-    setCachedFolderData(folderId, selectedFolderData.value)
-
-    // Wait for reactive updates and DOM
-    await nextTick()
-    await nextTick() // Double nextTick to ensure computed properties have updated
-
-    // Render graph after ensuring DOM is ready
-    if (d3Available && graphNodes.value.length > 0) {
-      // Use setTimeout to ensure SVG element is fully rendered
-      setTimeout(() => {
-        if (svgRef.value) {
-          renderGraph()
-        }
-      }, 50)
-    }
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to fetch folder data'
-    console.error('Error fetching folder data:', e)
-    completedApiCalls.value = totalApiCalls.value // Mark all as completed on error
-  } finally {
-    isLoading.value = false
-  }
-}
-
-// Watch for graph nodes changes to re-render
+// Watch for graph changes to re-render
 watch(
-  () => [graphNodes.value.length, rootId.value],
+  () => [graphNodes.value.length, isConfigured.value],
   () => {
-    if (d3Available && graphNodes.value.length > 0 && svgRef.value) {
+    if (d3Available && graphNodes.value.length > 0 && svgRef.value && !isConfiguring.value) {
       nextTick(() => {
         setTimeout(() => {
           if (svgRef.value && graphNodes.value.length > 0) {
@@ -897,10 +678,8 @@ watch(showLabels, () => {
   }
 })
 
-// Watch for when configuration is done and graph view is shown
 watch(isConfiguring, (newVal) => {
-  if (!newVal && rootId.value && d3Available) {
-    // Wait for DOM to update and SVG to be mounted
+  if (!newVal && isConfigured.value && d3Available) {
     nextTick(() => {
       setTimeout(() => {
         if (svgRef.value && graphNodes.value.length > 0) {
@@ -912,18 +691,24 @@ watch(isConfiguring, (newVal) => {
 })
 
 onMounted(async () => {
+  // Always load data (uses shared cache)
+  if (hasApiConfig.value) {
+    await loadAllData()
+  }
+
   if (!isConfigured.value) {
     isConfiguring.value = true
-    // Always fetch folders when not configured (force refresh)
-    if (hasApiConfig.value) {
-      await loadFolders(true)
-    }
+    configStep.value = 'mode'
   } else {
-    // Load folders first, then folder data if already configured
-    if (hasApiConfig.value) {
-      await loadFolders()
+    // Render graph after data loads
+    await nextTick()
+    if (d3Available && graphNodes.value.length > 0 && svgRef.value) {
+      setTimeout(() => {
+        if (svgRef.value) {
+          renderGraph()
+        }
+      }, 50)
     }
-    await loadFolderData(rootId.value)
   }
 })
 </script>
@@ -935,33 +720,107 @@ onMounted(async () => {
     </div>
 
     <div v-else-if="isConfiguring" class="config-view">
-      <div class="config-header">
-        <h3>Select Root Folder</h3>
-        <p class="config-description">Choose a folder to visualize</p>
-      </div>
-
-      <div v-if="isLoading" class="folders-loading">
-        <Loader class="loader-icon" :size="16" />
-        <span>Loading folders...</span>
-      </div>
-
-      <div v-else-if="allFoldersList.length > 0" class="folders-list">
-        <div
-          v-for="folder in allFoldersList"
-          :key="folder.id"
-          class="folder-item"
-          @click="selectRoot(folder)"
-        >
-          <div class="folder-icon">
-            <span>📁</span>
-          </div>
-          <div class="folder-name">{{ folder.name }}</div>
+      <!-- Step 1: Mode selection -->
+      <template v-if="configStep === 'mode'">
+        <div class="config-header">
+          <h3>Select Graph Type</h3>
+          <p class="config-description">Choose what to visualize</p>
         </div>
-      </div>
 
-      <div v-else class="no-folders">
-        <p>No folders available</p>
-      </div>
+        <div v-if="isLoading" class="loading-state">
+          <ProgressIndicator
+            :completed="completedApiCalls"
+            :total="totalApiCalls"
+            message="Loading data"
+          />
+        </div>
+
+        <div v-else class="mode-selection">
+          <div class="mode-item" @click="selectMode('folder')">
+            <div class="mode-icon">📁</div>
+            <div class="mode-info">
+              <div class="mode-name">Folder</div>
+              <div class="mode-description">Visualize documents in a folder</div>
+            </div>
+          </div>
+          <div
+            class="mode-item"
+            :class="{ disabled: availableTags.length === 0 }"
+            @click="availableTags.length > 0 && selectMode('tag')"
+          >
+            <div class="mode-icon">#</div>
+            <div class="mode-info">
+              <div class="mode-name">Tag</div>
+              <div class="mode-description">
+                {{ availableTags.length > 0 ? 'Visualize documents by tag' : 'No tags configured' }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Step 2: Folder selection -->
+      <template v-else-if="configStep === 'select' && widgetMode === 'folder'">
+        <div class="config-header">
+          <h3>Select Folder</h3>
+          <p class="config-description">Choose a folder to visualize</p>
+          <button class="back-button" @click="configStep = 'mode'">Back</button>
+        </div>
+
+        <div v-if="isLoading" class="loading-state">
+          <ProgressIndicator
+            :completed="completedApiCalls"
+            :total="totalApiCalls"
+            message="Loading folders"
+          />
+        </div>
+
+        <div v-else-if="allFoldersList.length > 0" class="folders-list">
+          <div
+            v-for="folder in allFoldersList"
+            :key="folder.id"
+            class="folder-item"
+            :style="{ paddingLeft: `${12 + folder.depth * 16}px` }"
+            @click="selectRoot(folder)"
+          >
+            <div class="folder-icon">📁</div>
+            <div class="folder-name">{{ folder.name }}</div>
+          </div>
+        </div>
+
+        <div v-else class="no-items">
+          <p>No folders available</p>
+        </div>
+      </template>
+
+      <!-- Step 2: Tag selection -->
+      <template v-else-if="configStep === 'select' && widgetMode === 'tag'">
+        <div class="config-header">
+          <h3>Select Tag</h3>
+          <p class="config-description">Choose a tag to visualize</p>
+          <button class="back-button" @click="configStep = 'mode'">Back</button>
+        </div>
+
+        <div v-if="isLoading" class="loading-state">
+          <ProgressIndicator
+            :completed="completedApiCalls"
+            :total="totalApiCalls"
+            message="Loading tags"
+          />
+        </div>
+
+        <div v-else-if="availableTags.length > 0" class="tags-list">
+          <div v-for="tag in availableTags" :key="tag" class="tag-item" @click="selectTag(tag)">
+            <div class="tag-icon">#</div>
+            <div class="tag-name">{{ tag }}</div>
+          </div>
+        </div>
+
+        <div v-else class="no-items">
+          <p>No tags configured</p>
+          <p class="hint">Add tags in the Tags view first</p>
+        </div>
+      </template>
     </div>
 
     <div v-else-if="isLoading" class="loading-state">
@@ -972,8 +831,8 @@ onMounted(async () => {
       />
     </div>
 
-    <div v-else-if="!rootId" class="empty-state">
-      <p>Please select a root element</p>
+    <div v-else-if="!isConfigured" class="empty-state">
+      <p>Please configure the widget</p>
     </div>
 
     <div v-else class="graph-content-wrapper">
@@ -984,8 +843,8 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Footer with action buttons (only show when graph is configured) -->
-    <div v-if="rootId && !isLoading && !isCompactView" class="widget-footer">
+    <!-- Footer -->
+    <div v-if="isConfigured && !isLoading && !isCompactView" class="widget-footer">
       <label class="toggle-label">
         <input v-model="showLabels" type="checkbox" />
         <span>Labels</span>
@@ -1009,10 +868,20 @@ onMounted(async () => {
       <button @click="refresh" class="footer-button" title="Refresh data" :disabled="isLoading">
         <RefreshCw :size="16" :class="{ spinning: isLoading }" />
       </button>
-      <button @click="reconfigure" class="footer-button" title="Change root">
+      <button @click="reconfigure" class="footer-button" title="Change configuration">
         <Settings :size="16" />
       </button>
     </div>
+
+    <!-- Node Modal -->
+    <GraphNodeModal
+      :node="selectedNode"
+      :nodes="graphNodes"
+      :links="graphLinks"
+      :node-colors="nodeColors"
+      @close="selectedNode = null"
+      @node-click="(node) => (selectedNode = node)"
+    />
   </div>
 </template>
 
@@ -1042,19 +911,7 @@ onMounted(async () => {
   padding: 32px;
   color: var(--text-secondary);
   font-size: 13px;
-}
-
-.loader-icon {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  flex: 1;
 }
 
 .config-view {
@@ -1079,23 +936,85 @@ onMounted(async () => {
   color: var(--text-secondary);
 }
 
-.folders-loading {
+/* Mode selection */
+.mode-selection {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   gap: 8px;
-  padding: 32px;
-  color: var(--text-secondary);
-  font-size: 13px;
 }
 
+.mode-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mode-item:hover:not(.disabled) {
+  background-color: var(--bg-tertiary);
+  border-color: var(--btn-primary-bg);
+}
+
+.mode-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mode-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+  width: 32px;
+  text-align: center;
+}
+
+.mode-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mode-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mode-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Back button */
+.back-button {
+  margin-top: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: fit-content;
+}
+
+.back-button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Folders list */
 .folders-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
   max-height: 400px;
   overflow-y: auto;
-  padding: 4px;
 }
 
 .folder-item {
@@ -1116,7 +1035,7 @@ onMounted(async () => {
 }
 
 .folder-icon {
-  font-size: 18px;
+  font-size: 16px;
   flex-shrink: 0;
 }
 
@@ -1130,11 +1049,57 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.no-folders {
+/* Tags list */
+.tags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.tag-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tag-item:hover {
+  background-color: var(--bg-tertiary);
+  border-color: var(--btn-primary-bg);
+}
+
+.tag-icon {
+  font-size: 18px;
+  font-weight: 600;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.tag-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.no-items {
   padding: 32px;
   text-align: center;
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.no-items .hint {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 4px;
 }
 
 .graph-content-wrapper {
@@ -1143,7 +1108,7 @@ onMounted(async () => {
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  padding-bottom: 38px; /* Space for footer buttons */
+  padding-bottom: 38px;
 }
 
 .widget-footer {
@@ -1216,11 +1181,11 @@ onMounted(async () => {
 
 .empty-graph {
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 </style>
