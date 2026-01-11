@@ -1,24 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import {
-  RefreshCw,
-  Loader,
-  FileText,
-  Calendar,
-  Library,
-  Folder,
-  TrendingUp,
-  Clock,
-} from 'lucide-vue-next'
+import { storeToRefs } from 'pinia'
+import { RefreshCw, FileText } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
 import { useStatsApiStore } from '../../stores/statsApi'
-import {
-  getApiUrl,
-  type CraftDocument,
-  type Collection,
-  type CraftFolder,
-} from '../../utils/craftApi'
+import { getApiUrl } from '../../utils/craftApi'
 import ProgressIndicator from '../ProgressIndicator.vue'
 
 const props = defineProps<{
@@ -32,16 +19,13 @@ const emit = defineEmits<{
 const { isCompactView } = useWidgetView()
 
 const statsApiStore = useStatsApiStore()
+const { documents, collections, folders } = storeToRefs(statsApiStore)
 
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 const lastUpdated = ref<number | null>(null)
 const totalApiCalls = ref(0)
 const completedApiCalls = ref(0)
-
-const documents = computed(() => statsApiStore.documents)
-const collections = computed(() => statsApiStore.collections)
-const folders = computed(() => statsApiStore.folders)
 
 const hasApiConfig = computed(() => !!getApiUrl())
 
@@ -98,16 +82,16 @@ const documentsByDate = computed(() => {
   for (let i = 6; i >= 0; i--) {
     const date = new Date(today)
     date.setDate(date.getDate() - i)
-    const dateStr = date.toISOString().split('T')[0]
-    last7Days[dateStr] = 0
+    const dateStr = date.toISOString().split('T')[0] ?? ''
+    if (dateStr) last7Days[dateStr] = 0
   }
 
   // Count documents by creation date
   documents.value.forEach((doc) => {
     if (doc.createdAt) {
-      const dateStr = doc.createdAt.split('T')[0]
-      if (last7Days.hasOwnProperty(dateStr)) {
-        last7Days[dateStr]++
+      const dateStr = doc.createdAt.split('T')[0] ?? ''
+      if (dateStr && dateStr in last7Days) {
+        last7Days[dateStr] = (last7Days[dateStr] ?? 0) + 1
       }
     }
   })
@@ -128,7 +112,9 @@ const getPieChartOffset = (index: number) => {
   let offset = 0
   for (let i = 0; i < index; i++) {
     const segment = overviewChartData.value.segments[i]
-    offset -= (segment.value / overviewChartData.value.total) * 314.16
+    if (segment) {
+      offset -= (segment.value / overviewChartData.value.total) * 314.16
+    }
   }
   return offset
 }

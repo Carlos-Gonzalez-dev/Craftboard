@@ -34,7 +34,13 @@ export const useStatsApiStore = defineStore('statsApi', () => {
   async function initializeStats(forceRefresh = false) {
     if (!forceRefresh) {
       const cached = cache.getCachedData<StatsData>('all')
-      if (cached) {
+      // Validate cached data is in correct format (arrays, not objects with items)
+      if (
+        cached &&
+        Array.isArray(cached.documents) &&
+        Array.isArray(cached.collections) &&
+        Array.isArray(cached.folders)
+      ) {
         documents.value = cached.documents
         collections.value = cached.collections
         folders.value = cached.folders
@@ -50,21 +56,21 @@ export const useStatsApiStore = defineStore('statsApi', () => {
   }
 
   async function fetchStats() {
-    // Fetch all data in parallel
-    const [docs, cols, folds] = await Promise.all([
-      fetchDocuments(),
+    // Fetch all data in parallel (fetchMetadata: true to get lastModifiedAt/createdAt)
+    const [docsResponse, cols, foldersResponse] = await Promise.all([
+      fetchDocuments({ fetchMetadata: true }),
       listCollections(),
       fetchFolders(),
     ])
 
-    documents.value = docs
+    documents.value = docsResponse.items
     collections.value = cols
-    folders.value = folds
+    folders.value = foldersResponse.items
 
     const statsData: StatsData = {
-      documents: docs,
+      documents: docsResponse.items,
       collections: cols,
-      folders: folds,
+      folders: foldersResponse.items,
     }
 
     cache.setCachedData('all', statsData)
@@ -79,9 +85,9 @@ export const useStatsApiStore = defineStore('statsApi', () => {
 
   return {
     data,
-    documents: computed(() => documents.value),
-    collections: computed(() => collections.value),
-    folders: computed(() => folders.value),
+    documents,
+    collections,
+    folders,
     initializeStats,
     refreshStats,
     clearAllCache,

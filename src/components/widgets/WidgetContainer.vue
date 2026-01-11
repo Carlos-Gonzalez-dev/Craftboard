@@ -10,7 +10,7 @@ import CollectionWidget from './CollectionWidget.vue'
 import DailyNoteWidget from './DailyNoteWidget.vue'
 import PinBlockWidget from './PinBlockWidget.vue'
 import PinUrlWidget from './PinUrlWidget.vue'
-import StatsWidget from './StatsWidget.vue'
+import WorkspaceStatsWidget from './WorkspaceStatsWidget.vue'
 import TaskStatsWidget from './TaskStatsWidget.vue'
 import CollectionChartWidget from './CollectionChartWidget.vue'
 import GraphWidget from './GraphWidget.vue'
@@ -431,7 +431,7 @@ const { isCompactView } = useWidgetView()
         @update:data="handleDataUpdate"
         @update:title="handleTitleUpdate"
       />
-      <StatsWidget
+      <WorkspaceStatsWidget
         v-else-if="widget.type === 'stats'"
         :widget="widget"
         @update:data="handleDataUpdate"
@@ -546,7 +546,7 @@ const { isCompactView } = useWidgetView()
             @update:data="handleDataUpdate"
             @update:title="handleTitleUpdate"
           />
-          <StatsWidget
+          <WorkspaceStatsWidget
             v-else-if="widget.type === 'stats'"
             :widget="widget"
             @update:data="handleDataUpdate"
