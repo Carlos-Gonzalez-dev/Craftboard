@@ -37,7 +37,7 @@ const start = () => {
   isRunning.value = true
   startTimestamp = Date.now()
   const startTime = Date.now() - elapsed.value
-  
+
   // Register in active timers bar
   const elapsedSeconds = Math.floor(elapsed.value / 1000)
   registerTimer({
@@ -56,17 +56,17 @@ const start = () => {
     color: props.widget.color,
     icon: 'stopwatch',
   })
-  
+
   interval = window.setInterval(() => {
     elapsed.value = Date.now() - startTime
-    
+
     // Sync with global timer
     const globalTimer = getTimer(props.widget.id)
     if (globalTimer) {
       elapsed.value = globalTimer.timeRemaining * 1000
     }
   }, 10) // Update every 10ms for smooth display
-  
+
   saveState()
 }
 
@@ -76,15 +76,15 @@ const pause = () => {
     clearInterval(interval)
     interval = undefined
   }
-  
+
   // Update timer state but keep it in the bar
   const elapsedSeconds = Math.floor(elapsed.value / 1000)
   updateTimer(props.widget.id, {
     isRunning: false,
     timeRemaining: elapsedSeconds,
-    elapsedAtStart: elapsedSeconds
+    elapsedAtStart: elapsedSeconds,
   })
-  
+
   saveState()
 }
 
@@ -95,10 +95,10 @@ const reset = () => {
     clearInterval(interval)
     interval = undefined
   }
-  
+
   // Remove from active timers bar
   unregisterTimer(props.widget.id)
-  
+
   saveState()
 }
 
@@ -114,7 +114,7 @@ const saveState = () => {
   const state = {
     elapsed: elapsed.value,
     isRunning: isRunning.value,
-    timestamp: Date.now() // Save current timestamp instead of startTimestamp
+    timestamp: Date.now(), // Save current timestamp instead of startTimestamp
   }
   localStorage.setItem(`stopwatch-${props.widget.id}`, JSON.stringify(state))
 }
@@ -124,7 +124,7 @@ const loadState = () => {
   if (saved) {
     try {
       const state = JSON.parse(saved)
-      
+
       if (state.isRunning && state.timestamp) {
         // Calculate elapsed time including time since last save
         const timeSinceLastSave = Date.now() - state.timestamp
@@ -142,7 +142,7 @@ const loadState = () => {
 
 onMounted(() => {
   loadState()
-  
+
   // If was running, restart with current elapsed time
   if (isRunning.value) {
     start()
@@ -167,7 +167,12 @@ onUnmounted(() => {
       <button v-else @click="toggle" class="control-button pause-button" title="Pause">
         <Pause :size="18" />
       </button>
-      <button @click="reset" class="control-button reset-button" title="Reset" :disabled="elapsed === 0">
+      <button
+        @click="reset"
+        class="control-button reset-button"
+        title="Reset"
+        :disabled="elapsed === 0 || isRunning"
+      >
         <RotateCcw :size="18" />
       </button>
     </div>
@@ -251,4 +256,3 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 </style>
-

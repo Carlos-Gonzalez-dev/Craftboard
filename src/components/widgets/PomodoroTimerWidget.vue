@@ -227,8 +227,12 @@ const pauseTimer = () => {
     intervalId.value = null
   }
 
-  // Unregister from active timers
-  unregisterTimer(props.widget.id)
+  // Update timer state but keep it in the bar
+  updateTimer(props.widget.id, {
+    isRunning: false,
+    timeRemaining: timeRemaining.value,
+    timeRemainingAtStart: timeRemaining.value,
+  })
 
   saveState()
 }
@@ -388,7 +392,7 @@ onUnmounted(() => {
       <button v-else @click="pauseTimer" class="control-button pause-button" title="Pause">
         <Pause :size="18" />
       </button>
-      <button @click="resetTimer" class="control-button reset-button" title="Reset">
+      <button @click="resetTimer" class="control-button reset-button" title="Reset" :disabled="isRunning">
         <RotateCcw :size="18" />
       </button>
     </div>
@@ -397,6 +401,7 @@ onUnmounted(() => {
       <button
         @click="switchTimerType('work')"
         :class="['type-button', { active: timerType === 'work' }]"
+        :disabled="isRunning"
         title="Focus Time (25 min)"
       >
         Work
@@ -404,6 +409,7 @@ onUnmounted(() => {
       <button
         @click="switchTimerType('shortBreak')"
         :class="['type-button', { active: timerType === 'shortBreak' }]"
+        :disabled="isRunning"
         title="Short Break (5 min)"
       >
         Break
@@ -411,6 +417,7 @@ onUnmounted(() => {
       <button
         @click="switchTimerType('longBreak')"
         :class="['type-button', { active: timerType === 'longBreak' }]"
+        :disabled="isRunning"
         title="Long Break (15 min)"
       >
         Long
@@ -534,10 +541,15 @@ onUnmounted(() => {
   border: 1px solid var(--border-primary);
 }
 
-.reset-button:hover {
+.reset-button:hover:not(:disabled) {
   background: var(--bg-secondary);
   color: var(--text-primary);
   transform: scale(1.05);
+}
+
+.reset-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .timer-type-selector {
@@ -560,7 +572,7 @@ onUnmounted(() => {
   transition: all 0.2s ease;
 }
 
-.type-button:hover {
+.type-button:hover:not(:disabled) {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
@@ -571,7 +583,12 @@ onUnmounted(() => {
   border-color: transparent;
 }
 
-.type-button.active:hover {
+.type-button.active:hover:not(:disabled) {
   background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+}
+
+.type-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
