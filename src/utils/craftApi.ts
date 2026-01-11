@@ -667,23 +667,53 @@ export const searchDocuments = async (query: string): Promise<DocumentSearchResu
   }
 
   const data = await response.json()
-  return (data.items || [])
-    .filter((item: any) => {
-      // Filter out blocks - blocks have markdown starting with "..."
-      const markdown = item.markdown || ''
-      return !markdown.trim().startsWith('...')
-    })
-    .map((item: any) => {
-      const documentId = item.documentId || item.id
-      const title = extractTitleFromMarkdown(item.markdown || '')
-      return {
-        id: documentId,
-        title,
-        snippet: item.markdown,
-        lastModifiedAt: item.lastModifiedAt,
-        createdAt: item.createdAt,
-      }
-    })
+  return (data.items || []).map((item: any) => {
+    const documentId = item.documentId || item.id
+    return {
+      id: documentId,
+      title: '', // Not used - we show full snippet instead
+      snippet: item.markdown || '',
+      lastModifiedAt: item.lastModifiedAt,
+      createdAt: item.createdAt,
+    }
+  })
+}
+
+// Search within a document to find specific block IDs
+export interface BlockSearchResult {
+  blockId: string
+  markdown: string
+}
+
+export const searchWithinDocument = async (
+  documentId: string,
+  query: string,
+): Promise<BlockSearchResult[]> => {
+  const apiUrl = getApiUrl()
+  if (!apiUrl) {
+    throw new Error('Craft API URL not configured')
+  }
+
+  // Escape special regex characters for literal search
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  const response = await fetch(
+    `${apiUrl}/blocks/search?blockId=${documentId}&pattern=${encodeURIComponent(escapedQuery)}&caseSensitive=false`,
+    {
+      method: 'GET',
+      headers: getHeaders(),
+    },
+  )
+
+  if (!response.ok) {
+    return []
+  }
+
+  const data = await response.json()
+  return (data.items || []).map((item: any) => ({
+    blockId: item.blockId,
+    markdown: item.markdown || '',
+  }))
 }
 
 // Get document content by ID
