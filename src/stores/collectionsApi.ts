@@ -75,9 +75,23 @@ export const useCollectionsApiStore = defineStore('collectionsApi', () => {
     ])
 
     // Find collection info from the list
-    const collection = collections.value.find((c) => c.id === collectionId)
+    let collection = collections.value.find((c) => c.id === collectionId)
+
+    // If not found, try loading the collections list first (may not be initialized yet)
     if (!collection) {
-      throw new Error(`Collection ${collectionId} not found in collections list`)
+      await initializeCollections()
+      collection = collections.value.find((c) => c.id === collectionId)
+    }
+
+    // If still not found, create a minimal collection object from the data we have
+    // This can happen if the collection was deleted or the cache is stale
+    if (!collection) {
+      collection = {
+        id: collectionId,
+        name: schema.name || 'Unknown Collection',
+        itemCount: items.length,
+        documentId: '',
+      }
     }
 
     const collectionData: CollectionData = {

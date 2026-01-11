@@ -599,8 +599,9 @@ const isEmail = (value: string): boolean => {
         <p>No items in this collection</p>
       </div>
 
-      <!-- Filter Form View -->
-      <div v-if="isFiltering && items.length > 0" class="filter-form-view">
+      <!-- Filter Form View - only show when not loading/error and has items -->
+      <template v-if="!loading && !error && items.length > 0">
+        <div v-if="isFiltering" class="filter-form-view">
         <div class="filter-form">
           <h3 class="filter-form-title">Filter Collection</h3>
 
@@ -668,8 +669,8 @@ const isEmail = (value: string): boolean => {
         </div>
       </div>
 
-      <!-- Collection Table View -->
-      <div v-else-if="viewMode === 'table'" class="collection-table-wrapper">
+        <!-- Collection Table View -->
+        <div v-else-if="viewMode === 'table'" class="collection-table-wrapper">
         <table class="collection-table">
           <thead>
             <tr>
@@ -746,8 +747,8 @@ const isEmail = (value: string): boolean => {
         </table>
       </div>
 
-      <!-- Collection Gallery View -->
-      <div v-else class="collection-gallery-wrapper">
+        <!-- Collection Gallery View -->
+        <div v-else class="collection-gallery-wrapper">
         <div class="gallery-grid">
           <div
             v-for="item in filteredItems"
@@ -770,6 +771,7 @@ const isEmail = (value: string): boolean => {
           </div>
         </div>
       </div>
+      </template>
 
       <!-- Footer with action buttons -->
       <div v-if="!isCompactView" class="widget-footer">

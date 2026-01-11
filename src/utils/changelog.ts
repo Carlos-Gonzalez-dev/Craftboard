@@ -5,6 +5,10 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: 'unpublished',
+    changes: ['Fix several bugs on Collection widget'],
+  },
+  {
     date: '2026-01-11v2',
     changes: [
       'Fix duplicated tags on TagView when notes have multiple tags',
