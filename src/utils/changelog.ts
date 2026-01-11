@@ -5,6 +5,10 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: '2026-01-11',
+    changes: ['Improved PIN Block widget now has search'],
+  },
+  {
     date: '2026-01-10',
     changes: [
       'Improve iCal support (recurring events, all-day events)',
