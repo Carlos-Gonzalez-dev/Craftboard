@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onActivated, onUnmounted, watch, inject, h } from 'vue'
-import { Bookmark, ExternalLink, Search, X, RefreshCw } from 'lucide-vue-next'
+import { Bookmark, ExternalLink, Search, X, RefreshCw, Folder } from 'lucide-vue-next'
 import {
   getApiUrl,
   getCraftLinkPreference,
@@ -60,14 +60,24 @@ const groupedBookmarks = computed(() => {
     }
   })
 
-  // Convert to array and sort categories
-  return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  // Convert to array and sort categories: Projects first, then alphabetically
+  return Array.from(groups.entries()).sort((a, b) => {
+    const aIsProject = a[0].startsWith('Project:')
+    const bIsProject = b[0].startsWith('Project:')
+
+    if (aIsProject && !bIsProject) return -1
+    if (!aIsProject && bIsProject) return 1
+    return a[0].localeCompare(b[0])
+  })
 })
 
-// Get categories for tabs
+// Get categories for tabs with separator
 const categories = computed(() => {
   return groupedBookmarks.value.map(([category]) => category)
 })
+
+// Helper to check if category is a project
+const isProjectCategory = (category: string) => category.startsWith('Project:')
 
 // Get available tags from bookmarks in the selected category
 const allTags = computed(() => {
@@ -309,7 +319,12 @@ onMounted(() => {
     setSubheader({
       default: () =>
         h(ViewTabs, {
-          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          tabs: categories.value.map((cat) => ({
+            id: cat,
+            label: isProjectCategory(cat) ? cat.replace('Project: ', '') : cat,
+            icon: isProjectCategory(cat) ? Folder : undefined,
+            isProject: isProjectCategory(cat),
+          })),
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
             selectedCategory.value = tab || null
@@ -354,7 +369,12 @@ onActivated(() => {
     setSubheader({
       default: () =>
         h(ViewTabs, {
-          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          tabs: categories.value.map((cat) => ({
+            id: cat,
+            label: isProjectCategory(cat) ? cat.replace('Project: ', '') : cat,
+            icon: isProjectCategory(cat) ? Folder : undefined,
+            isProject: isProjectCategory(cat),
+          })),
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
             selectedCategory.value = tab || null
@@ -391,7 +411,12 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
     setSubheader({
       default: () =>
         h(ViewTabs, {
-          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
+          tabs: categories.value.map((cat) => ({
+            id: cat,
+            label: isProjectCategory(cat) ? cat.replace('Project: ', '') : cat,
+            icon: isProjectCategory(cat) ? Folder : undefined,
+            isProject: isProjectCategory(cat),
+          })),
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
             selectedCategory.value = tab || null

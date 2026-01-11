@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineProps<{
-  tabs: Array<{ id: string; label: string; icon?: any; disabled?: boolean }>
+  tabs: Array<{ id: string; label: string; icon?: any; disabled?: boolean; isProject?: boolean }>
   activeTab: string
 }>()
 
@@ -12,16 +12,21 @@ defineEmits<{
 <template>
   <div class="view-tabs-container">
     <div class="view-tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        @click="!tab.disabled && $emit('update:activeTab', tab.id)"
-        :class="['view-tab', { active: activeTab === tab.id, disabled: tab.disabled }]"
-        :disabled="tab.disabled"
-      >
-        <component v-if="tab.icon" :is="tab.icon" :size="14" />
-        <span>{{ tab.label }}</span>
-      </button>
+      <template v-for="(tab, index) in tabs" :key="tab.id">
+        <!-- Separator before first non-project tab -->
+        <div
+          v-if="index > 0 && tab.isProject === false && tabs[index - 1]?.isProject === true"
+          class="tabs-separator"
+        ></div>
+        <button
+          @click="!tab.disabled && $emit('update:activeTab', tab.id)"
+          :class="['view-tab', { active: activeTab === tab.id, disabled: tab.disabled }]"
+          :disabled="tab.disabled"
+        >
+          <component v-if="tab.icon" :is="tab.icon" :size="14" />
+          <span>{{ tab.label }}</span>
+        </button>
+      </template>
     </div>
   </div>
 </template>
@@ -95,5 +100,12 @@ defineEmits<{
   cursor: not-allowed;
   pointer-events: none;
 }
-</style>
 
+.tabs-separator {
+  width: 1px;
+  height: 20px;
+  background: var(--border-primary);
+  margin: 0 4px;
+  align-self: center;
+}
+</style>
