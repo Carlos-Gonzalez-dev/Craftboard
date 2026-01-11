@@ -127,6 +127,36 @@ const selectedCategoryItems = computed(() => {
   return items
 })
 
+// Group items by environment (only when hasEnvField is true)
+const groupedByEnv = computed(() => {
+  if (!hasEnvField.value) {
+    return null // Don't group if no env field
+  }
+
+  const groups = {
+    dev: [] as BookmarkItem[],
+    staging: [] as BookmarkItem[],
+    prod: [] as BookmarkItem[],
+    none: [] as BookmarkItem[],
+  }
+
+  selectedCategoryItems.value.forEach((item) => {
+    if (item.env) {
+      groups[item.env].push(item)
+    } else {
+      groups.none.push(item)
+    }
+  })
+
+  // Return array of groups that have items
+  return [
+    { env: 'dev', label: 'Development', items: groups.dev },
+    { env: 'staging', label: 'Staging', items: groups.staging },
+    { env: 'prod', label: 'Production', items: groups.prod },
+    { env: 'none', label: 'Other', items: groups.none },
+  ].filter((group) => group.items.length > 0)
+})
+
 // Set initial selected category
 const initializeSelectedCategory = () => {
   // Check if there's a category in the URL query
@@ -498,6 +528,70 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
                 <p>No bookmarks found matching your filters.</p>
               </div>
 
+              <!-- Grouped by environment -->
+              <template v-else-if="groupedByEnv && !selectedEnv">
+                <div class="env-groups-container">
+                  <div v-for="group in groupedByEnv" :key="group.env" class="env-group">
+                    <h3 :class="['env-group-header', `env-group-header-${group.env}`]">
+                      {{ group.label }}
+                    </h3>
+                    <div class="env-group-bookmarks">
+                      <a
+                        v-for="bookmark in group.items"
+                        :key="bookmark.id"
+                        :href="bookmark.url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        :class="[
+                          'bookmark-card',
+                          bookmark.env ? `bookmark-card-${bookmark.env}` : '',
+                        ]"
+                      >
+                        <div class="bookmark-favicon">
+                          <img
+                            :src="getFaviconUrl(bookmark.url)"
+                            :alt="getDomain(bookmark.url)"
+                            @error="
+                              (e) => {
+                                e.target.style.display = 'none'
+                              }
+                            "
+                          />
+                        </div>
+                        <div class="bookmark-content">
+                          <div class="bookmark-header">
+                            <h3 class="bookmark-title">
+                              {{ bookmark.title || getDomain(bookmark.url) }}
+                            </h3>
+                            <span
+                              v-if="bookmark.env"
+                              :class="['env-badge', `env-badge-${bookmark.env}`]"
+                            >
+                              {{ bookmark.env }}
+                            </span>
+                          </div>
+                          <p class="bookmark-url">{{ getDomain(bookmark.url) }}</p>
+                          <div
+                            v-if="bookmark.tags && bookmark.tags.length > 0"
+                            class="bookmark-tags"
+                          >
+                            <span
+                              v-for="tag in bookmark.tags"
+                              :key="tag"
+                              class="tag"
+                              :style="getTagColor(tag)"
+                              >{{ tag }}</span
+                            >
+                          </div>
+                        </div>
+                        <ExternalLink :size="16" class="bookmark-external-icon" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Regular list (no grouping or filtered by specific env) -->
               <div v-else class="bookmarks-grid">
                 <a
                   v-for="bookmark in selectedCategoryItems"
@@ -1040,6 +1134,74 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
 
 .bookmark-card:hover .bookmark-external-icon {
   opacity: 1;
+}
+
+.env-groups-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.env-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  border-left: 4px solid;
+  height: 100%;
+}
+
+.env-group:has(.env-group-header-dev) {
+  background: rgba(59, 130, 246, 0.08);
+  border-left-color: #3b82f6;
+}
+
+.env-group:has(.env-group-header-staging) {
+  background: rgba(245, 158, 11, 0.08);
+  border-left-color: #f59e0b;
+}
+
+.env-group:has(.env-group-header-prod) {
+  background: rgba(34, 197, 94, 0.08);
+  border-left-color: #22c55e;
+}
+
+.env-group:has(.env-group-header-none) {
+  background: var(--bg-tertiary);
+  border-left-color: var(--border-primary);
+}
+
+.env-group-header {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+  padding: 0 0 8px 0;
+}
+
+.env-group-header-dev {
+  color: #3b82f6;
+}
+
+.env-group-header-staging {
+  color: #f59e0b;
+}
+
+.env-group-header-prod {
+  color: #22c55e;
+}
+
+.env-group-header-none {
+  color: var(--text-secondary);
+}
+
+.env-group-bookmarks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 @media (max-width: 768px) {
