@@ -151,7 +151,13 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
       }
 
       const searchData = await searchResponse.json()
-      const documents = searchData.items || []
+      const rawDocuments = searchData.items || []
+
+      // Deduplicate documents by documentId (same document may appear multiple times
+      // if it contains multiple matching tags)
+      const documents = Array.from(
+        new Map(rawDocuments.map((doc: any) => [doc.documentId, doc])).values(),
+      )
 
       // Step 2: Fetch blocks for each document with metadata
       totalApiCalls.value = documents.length
@@ -286,7 +292,12 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
       }
 
       const searchData = await searchResponse.json()
-      const documents = searchData.items || []
+      const rawDocuments = searchData.items || []
+
+      // Deduplicate documents by documentId
+      const documents = Array.from(
+        new Map(rawDocuments.map((doc: any) => [doc.documentId, doc])).values(),
+      )
 
       // For each document, we need to determine which of the user's tags it contains
       // We'll fetch minimal block data to extract tags
