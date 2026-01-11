@@ -6,7 +6,7 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: 'unpublished',
-    changes: ['Fix several bugs on Collection widget'],
+    changes: ['Fix several bugs on Collection widget', 'Added quick action menu'],
   },
   {
     date: '2026-01-11v2',

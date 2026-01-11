@@ -8,11 +8,15 @@ import {
   FolderOpen,
   CalendarDays,
   Files,
+  ListTodo,
+  Loader,
 } from 'lucide-vue-next'
-import { getSpaceId, fetchAndCacheSpaceId } from '../utils/craftApi'
+import { getSpaceId, fetchAndCacheSpaceId, getDailyNoteDocumentId } from '../utils/craftApi'
 
 const isOpen = ref(false)
 const searchQuery = ref('')
+const taskText = ref('')
+const isAddingTask = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 const buttonRef = ref<HTMLElement | null>(null)
 
@@ -20,12 +24,16 @@ const toggleMenu = () => {
   isOpen.value = !isOpen.value
   if (!isOpen.value) {
     searchQuery.value = ''
+    taskText.value = ''
+    isAddingTask.value = false
   }
 }
 
 const closeMenu = () => {
   isOpen.value = false
   searchQuery.value = ''
+  taskText.value = ''
+  isAddingTask.value = false
 }
 
 const handleClickOutside = (event: MouseEvent) => {
@@ -93,8 +101,55 @@ const handleSearchKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Enter') {
     executeSearch()
   } else if (event.key === 'Escape') {
-    showSearchInput.value = false
     searchQuery.value = ''
+  }
+}
+
+// Add task to today's daily note
+const addTaskToToday = async () => {
+  if (!taskText.value.trim()) return
+
+  isAddingTask.value = true
+
+  try {
+    const spaceId = await getSpace()
+    if (!spaceId) {
+      alert('Space ID not configured. Please set it in Settings.')
+      return
+    }
+
+    // Get today's daily note document ID (using local timezone)
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const dailyNoteId = await getDailyNoteDocumentId(today)
+
+    if (!dailyNoteId) {
+      alert('Could not find today\'s daily note. Please open it first in Craft.')
+      return
+    }
+
+    // Build the task markdown: "- [ ] Task text"
+    const taskMarkdown = `- [ ] ${taskText.value.trim()}`
+    const encodedContent = encodeURIComponent(taskMarkdown)
+
+    // Use createblock URL scheme to append task
+    window.location.href = `craftdocs://createblock?parentBlockId=${dailyNoteId}&spaceId=${spaceId}&content=${encodedContent}&index=9999`
+
+    taskText.value = ''
+    closeMenu()
+  } catch (error) {
+    console.error('Failed to add task:', error)
+    alert('Failed to add task. Please try again.')
+  } finally {
+    isAddingTask.value = false
+  }
+}
+
+const handleTaskKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Enter') {
+    addTaskToToday()
+  } else if (event.key === 'Escape') {
+    taskText.value = ''
   }
 }
 
@@ -138,6 +193,29 @@ const openSpace = async (tab: 'calendar' | 'search' | 'documents') => {
           <FileText :size="14" />
           <span>New Document</span>
         </button>
+
+        <div class="menu-divider"></div>
+
+        <!-- Add Task to Today -->
+        <div class="search-input-container" @click.stop>
+          <ListTodo :size="14" />
+          <input
+            v-model="taskText"
+            type="text"
+            placeholder="Add task to today..."
+            class="search-input"
+            :disabled="isAddingTask"
+            @keydown="handleTaskKeydown"
+          />
+          <button
+            class="search-submit"
+            :disabled="isAddingTask || !taskText.trim()"
+            @click.stop="addTaskToToday"
+          >
+            <Loader v-if="isAddingTask" :size="12" class="spinning" />
+            <span v-else>Add</span>
+          </button>
+        </div>
 
         <div class="menu-divider"></div>
 
@@ -329,8 +407,26 @@ const openSpace = async (tab: 'calendar' | 'search' | 'documents') => {
   font-family: inherit;
 }
 
-.search-submit:hover {
+.search-submit:hover:not(:disabled) {
   transform: scale(1.02);
+}
+
+.search-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Menu transition */
