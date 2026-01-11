@@ -676,7 +676,7 @@ onUnmounted(() => {
 
     <main :class="['content', { 'with-pane-tabs': isDashboard }]">
       <router-view v-slot="{ Component }">
-        <keep-alive include="MusicView">
+        <keep-alive include="MusicView,BookmarksView">
           <component :is="Component" :key="route.name" />
         </keep-alive>
       </router-view>

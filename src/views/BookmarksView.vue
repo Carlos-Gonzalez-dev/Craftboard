@@ -72,23 +72,13 @@ const categories = computed(() => {
 const allTags = computed(() => {
   const tagsSet = new Set<string>()
 
-  if (!selectedCategory.value || selectedCategory.value === '') {
-    // When showing All, get tags from all bookmarks
-    bookmarks.value.forEach((bookmark) => {
+  const found = groupedBookmarks.value.find(([category]) => category === selectedCategory.value)
+  if (found) {
+    found[1].forEach((bookmark) => {
       if (bookmark.tags && Array.isArray(bookmark.tags)) {
         bookmark.tags.forEach((tag: string) => tagsSet.add(tag))
       }
     })
-  } else {
-    const found = groupedBookmarks.value.find(([category]) => category === selectedCategory.value)
-
-    if (found) {
-      found[1].forEach((bookmark) => {
-        if (bookmark.tags && Array.isArray(bookmark.tags)) {
-          bookmark.tags.forEach((tag: string) => tagsSet.add(tag))
-        }
-      })
-    }
   }
 
   return Array.from(tagsSet).sort()
@@ -96,33 +86,7 @@ const allTags = computed(() => {
 
 // Get items for selected category (filtered by search and tags)
 const selectedCategoryItems = computed(() => {
-  // If no category selected (All), return all bookmarks
-  if (!selectedCategory.value || selectedCategory.value === '') {
-    let items = bookmarks.value
-
-    // Apply search filter
-    if (searchQuery.value.trim()) {
-      const query = searchQuery.value.toLowerCase()
-      items = items.filter(
-        (item) =>
-          item.title.toLowerCase().includes(query) ||
-          item.url.toLowerCase().includes(query) ||
-          (item.tags &&
-            Array.isArray(item.tags) &&
-            item.tags.some((tag: string) => tag.toLowerCase().includes(query))),
-      )
-    }
-
-    // Apply tag filters
-    if (selectedTags.value.size > 0) {
-      items = items.filter((item) => {
-        if (!item.tags || !Array.isArray(item.tags)) return false
-        return Array.from(selectedTags.value).some((tag) => item.tags.includes(tag))
-      })
-    }
-
-    return items
-  }
+  // Find the selected category items
   const found = groupedBookmarks.value.find(([category]) => category === selectedCategory.value)
   if (!found) return []
 
@@ -156,18 +120,20 @@ const initializeSelectedCategory = () => {
   const categoryFromUrl = route.query.category as string | undefined
 
   if (categoryFromUrl !== undefined) {
-    // If category is empty string or 'all', show All
-    if (categoryFromUrl === '' || categoryFromUrl.toLowerCase() === 'all') {
-      selectedCategory.value = null
-    } else if (categories.value.includes(categoryFromUrl)) {
+    if (categories.value.includes(categoryFromUrl)) {
       selectedCategory.value = categoryFromUrl
     } else {
-      // Invalid category, default to All
-      selectedCategory.value = null
+      // Invalid category, select first available
+      selectedCategory.value = categories.value[0] || null
     }
   } else {
-    // No URL parameter, start with "All" (null) by default
-    selectedCategory.value = null
+    // No URL parameter
+    if (selectedCategory.value && categories.value.includes(selectedCategory.value)) {
+      // Current selection is valid, keep it
+      return
+    }
+    // No valid selection, select first category
+    selectedCategory.value = categories.value[0] || null
   }
 }
 
@@ -206,7 +172,6 @@ const initializeBookmarksData = async (forceRefresh = false) => {
 
   errorMessage.value = ''
   await bookmarksApiStore.initializeBookmarks(bookmarksCollectionId.value, forceRefresh)
-  initializeSelectedCategory()
 }
 
 const refreshBookmarks = async () => {
@@ -248,11 +213,15 @@ const clearFilters = () => {
   selectedTags.value = new Set()
 }
 
-// Watch for groupedBookmarks changes to initialize selected category
+// Watch for groupedBookmarks changes to initialize selected category only once
+const hasInitialized = ref(false)
 watch(
   groupedBookmarks,
   () => {
-    initializeSelectedCategory()
+    if (!hasInitialized.value && categories.value.length > 0) {
+      initializeSelectedCategory()
+      hasInitialized.value = true
+    }
   },
   { immediate: true },
 )
@@ -295,10 +264,7 @@ onMounted(() => {
     setSubheader({
       default: () =>
         h(ViewTabs, {
-          tabs: [
-            { id: '', label: 'All' },
-            ...categories.value.map((cat) => ({ id: cat, label: cat })),
-          ],
+          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
             selectedCategory.value = tab || null
@@ -333,7 +299,6 @@ onUnmounted(() => {
 onActivated(() => {
   isInitializing.value = false
   loadApiUrl()
-  initializeSelectedCategory()
   // Re-register subheader
   if (
     setSubheader &&
@@ -344,10 +309,7 @@ onActivated(() => {
     setSubheader({
       default: () =>
         h(ViewTabs, {
-          tabs: [
-            { id: '', label: 'All' },
-            ...categories.value.map((cat) => ({ id: cat, label: cat })),
-          ],
+          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
             selectedCategory.value = tab || null
@@ -384,10 +346,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
     setSubheader({
       default: () =>
         h(ViewTabs, {
-          tabs: [
-            { id: '', label: 'All' },
-            ...categories.value.map((cat) => ({ id: cat, label: cat })),
-          ],
+          tabs: categories.value.map((cat) => ({ id: cat, label: cat })),
           activeTab: selectedCategory.value || '',
           'onUpdate:activeTab': (tab: string) => {
             selectedCategory.value = tab || null
