@@ -99,7 +99,10 @@ const selectDocument = async (docId: string, title: string) => {
     documentId: docId,
     documentTitle: title,
   })
-  emit('update:title', title)
+  // Only emit if title actually changed to prevent infinite loops
+  if (props.widget.title !== title) {
+    emit('update:title', title)
+  }
 
   await loadTasks(true)
 }

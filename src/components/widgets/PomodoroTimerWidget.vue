@@ -142,6 +142,12 @@ const startTimer = () => {
     return
   }
 
+  // Clear any existing interval to prevent multiple intervals running
+  if (intervalId.value) {
+    clearInterval(intervalId.value)
+    intervalId.value = null
+  }
+
   isRunning.value = true
   isPaused.value = false
 
@@ -174,21 +180,16 @@ const startTimer = () => {
       icon: 'timer',
     })
   } else {
-    // Timer exists, just update the route and timestamps
-    // Don't overwrite isCompleted if it's already set
-    const updates: any = {
+    // Timer exists, update with new state (reset isCompleted if it was completed)
+    updateTimer(props.widget.id, {
       route: route.path,
       paneId: activePaneId.value,
       timeRemaining: timeRemaining.value,
       startTimestamp: startTimestamp.value,
       timeRemainingAtStart: timeRemainingAtStart.value,
       isRunning: true,
-    }
-
-    // Preserve isCompleted if it exists
-    if (!existingTimer.isCompleted) {
-      updateTimer(props.widget.id, updates)
-    }
+      isCompleted: false,
+    })
   }
 
   saveState()
