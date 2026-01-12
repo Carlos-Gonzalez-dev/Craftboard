@@ -51,6 +51,18 @@ const getExternalLinkUrl = computed(() => {
   return props.widget.data?.externalUrl || externalUrl.value
 })
 
+// Get favicon URL using Google's favicon service
+const faviconUrl = computed(() => {
+  const url = getExternalLinkUrl.value
+  if (!url) return null
+  try {
+    const hostname = new URL(url).hostname
+    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`
+  } catch {
+    return null
+  }
+})
+
 // Open external link
 const openExternalLink = () => {
   const url = getExternalLinkUrl.value
@@ -158,6 +170,7 @@ const reconfigure = () => {
             @click="handleImageClick"
           ></div>
           <div class="preview-text" @click="handleImageClick">
+            <img v-if="faviconUrl" :src="faviconUrl" alt="" class="favicon" />
             <p class="preview-url">{{ previewData?.url }}</p>
           </div>
         </div>
@@ -343,8 +356,16 @@ const reconfigure = () => {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: 8px;
   overflow-y: auto;
   cursor: pointer;
+}
+
+.favicon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .preview-url {
