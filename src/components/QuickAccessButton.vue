@@ -12,6 +12,7 @@ import {
   Loader,
 } from 'lucide-vue-next'
 import { getSpaceId, fetchAndCacheSpaceId, getDailyNoteDocumentId } from '../utils/craftApi'
+import { featureFlags } from '@/config/featureFlags'
 
 const isOpen = ref(false)
 const searchQuery = ref('')
@@ -232,10 +233,11 @@ const openSpace = async (tab: 'calendar' | 'search' | 'documents') => {
           <button class="search-submit" @click.stop="executeSearch">Go</button>
         </div>
 
-        <div class="menu-divider"></div>
+        <template v-if="featureFlags.openSpaceButtons">
+          <div class="menu-divider"></div>
 
-        <!-- Open Space Section -->
-        <div class="menu-section">
+          <!-- Open Space Section -->
+          <div class="menu-section">
           <div class="menu-section-header">
             <FolderOpen :size="14" />
             <span>Open Space</span>
@@ -252,7 +254,8 @@ const openSpace = async (tab: 'calendar' | 'search' | 'documents') => {
             <Files :size="14" />
             <span>Documents</span>
           </button>
-        </div>
+          </div>
+        </template>
       </div>
     </Transition>
   </div>
