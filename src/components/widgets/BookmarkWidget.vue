@@ -81,7 +81,11 @@ const loadSelectedBookmark = () => {
     const bookmark = bookmarks.value.find((b) => b.id === bookmarkId)
     if (bookmark) {
       selectedBookmark.value = bookmark
-      emit('update:title', bookmark.title || getDomain(bookmark.url))
+      const newTitle = bookmark.title || getDomain(bookmark.url)
+      // Only emit if title actually changed to prevent infinite loops
+      if (props.widget.title !== newTitle) {
+        emit('update:title', newTitle)
+      }
     }
   }
 }
