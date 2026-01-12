@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed, inject, type Ref } from 'vue'
+import { ref, watch, onMounted, computed, inject, type Ref, nextTick } from 'vue'
 import {
   Plus,
   FileText,
@@ -37,6 +37,9 @@ const isUpdating = ref(false)
 const injectedShowAddModal = inject<Ref<boolean> | undefined>('showAddWidgetModal')
 const localShowAddModal = ref(false)
 const showAddModal = injectedShowAddModal || localShowAddModal
+
+// Inject pending URL from clipboard for quick Pin URL widget creation
+const pendingPinUrl = inject<Ref<string | null>>('pendingPinUrl')
 
 // Pane management
 const showPaneNameModal = ref(false)
@@ -509,27 +512,27 @@ const widgetConfigMap: Record<string, { width: number; height: number; title: st
 
 const defaultWidgetConfig = { width: 4, height: 2, title: 'Widget' }
 
-const addWidget = (
-  type:
-    | 'markdown'
-    | 'clock'
-    | 'notes'
-    | 'collection'
-    | 'daily-note'
-    | 'pin-block'
-    | 'pin-url'
-    | 'stats'
-    | 'task-stats'
-    | 'collection-chart'
-    | 'graph'
-    | 'bookmark'
-    | 'quote'
-    | 'rss'
-    | 'pomodoro'
-    | 'document-tasks'
-    | 'stopwatch'
-    | 'iframe',
-) => {
+type WidgetType =
+  | 'markdown'
+  | 'clock'
+  | 'notes'
+  | 'collection'
+  | 'daily-note'
+  | 'pin-block'
+  | 'pin-url'
+  | 'stats'
+  | 'task-stats'
+  | 'collection-chart'
+  | 'graph'
+  | 'bookmark'
+  | 'quote'
+  | 'rss'
+  | 'pomodoro'
+  | 'document-tasks'
+  | 'stopwatch'
+  | 'iframe'
+
+const addWidget = (type: WidgetType, initialData?: Record<string, any>) => {
   const activePane = panes.value.find((p) => p.id === activePaneId.value)
   if (!activePane) return
 
@@ -547,6 +550,9 @@ const addWidget = (
     yPosition = maxY
   }
 
+  // Determine title: use initialData title if provided, otherwise default
+  const finalTitle = initialData?.externalTitle || widgetTitle
+
   const newWidget: Widget = {
     id: `${Date.now()}`,
     type,
@@ -554,13 +560,42 @@ const addWidget = (
     y: yPosition,
     w: widgetWidth,
     h: widgetHeight,
-    title: widgetTitle,
+    title: finalTitle,
     color: defaultColors[colorIndex],
+    data: initialData,
   }
   activePane.widgets.push(newWidget)
   savePanes()
   showAddModal.value = false
 }
+
+// Watch for pending Pin URL from clipboard
+watch(
+  () => pendingPinUrl?.value,
+  (url) => {
+    if (url) {
+      // Extract hostname for title
+      let title = 'Pin URL'
+      try {
+        title = new URL(url).hostname
+      } catch {
+        // Keep default title
+      }
+
+      addWidget('pin-url', {
+        externalUrl: url,
+        externalTitle: title,
+      })
+
+      // Clear the pending URL
+      nextTick(() => {
+        if (pendingPinUrl) {
+          pendingPinUrl.value = null
+        }
+      })
+    }
+  },
+)
 </script>
 
 <template>

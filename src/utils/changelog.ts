@@ -6,7 +6,11 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: 'unreleased',
-    changes: ['Improved some widgets to prevent infinite loops'],
+    changes: [
+      'Improved some widgets to prevent infinite loops',
+      'Fix task badge feature',
+      'PIN URL just by pasting on the dashboard from the clipboard',
+    ],
   },
   {
     date: '2026-01-12',

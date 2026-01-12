@@ -26,6 +26,7 @@ import {
   HelpCircle,
   Download,
   Clock,
+  ClipboardPaste,
 } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useWidgetView } from './composables/useWidgetView'
@@ -99,6 +100,54 @@ const openAddWidgetModal = () => {
 }
 
 provide('showAddWidgetModal', showAddWidgetModal)
+
+// Clipboard URL detection for quick Pin URL widget creation
+const clipboardUrl = ref<string | null>(null)
+const pendingPinUrl = ref<string | null>(null)
+
+provide('pendingPinUrl', pendingPinUrl)
+
+const isValidUrl = (text: string): boolean => {
+  try {
+    const url = new URL(text.trim())
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+const readClipboard = async () => {
+  if (!isDashboard.value) return
+
+  try {
+    const text = await navigator.clipboard.readText()
+    if (text && isValidUrl(text)) {
+      clipboardUrl.value = text.trim()
+    } else {
+      clipboardUrl.value = null
+    }
+  } catch {
+    // Clipboard access denied or not available
+    clipboardUrl.value = null
+  }
+}
+
+const addClipboardUrl = () => {
+  if (clipboardUrl.value) {
+    pendingPinUrl.value = clipboardUrl.value
+    clipboardUrl.value = null
+  }
+}
+
+const handlePaste = (e: ClipboardEvent) => {
+  if (!isDashboard.value) return
+
+  const text = e.clipboardData?.getData('text')
+  if (text && isValidUrl(text)) {
+    e.preventDefault()
+    pendingPinUrl.value = text.trim()
+  }
+}
 
 // Provide/inject for subheader content
 type SubheaderContent = {
@@ -451,11 +500,16 @@ onMounted(() => {
   window.addEventListener('storage', handleStorageChange)
   window.addEventListener('dashboard-title-updated', handleCustomEvent)
   window.addEventListener('nav-tabs-updated', handleCustomEvent)
+  window.addEventListener('paste', handlePaste)
+  window.addEventListener('focus', readClipboard)
   systemThemeUnwatch.value = watchSystemTheme()
 
   // Check for updates on mount and then every 5 minutes
   checkForUpdates()
   updateCheckInterval = window.setInterval(checkForUpdates, 5 * 60 * 1000)
+
+  // Initial clipboard read
+  readClipboard()
 
   if (isDashboard.value) {
     loadPanes()
@@ -477,6 +531,8 @@ onUnmounted(() => {
   window.removeEventListener('storage', handleStorageChange)
   window.removeEventListener('dashboard-title-updated', handleCustomEvent)
   window.removeEventListener('nav-tabs-updated', handleCustomEvent)
+  window.removeEventListener('paste', handlePaste)
+  window.removeEventListener('focus', readClipboard)
   if (systemThemeUnwatch.value) {
     systemThemeUnwatch.value()
   }
@@ -623,6 +679,15 @@ onUnmounted(() => {
               <PaneTabs @create-pane="showPaneNameModal = true" />
             </template>
             <template #right>
+              <button
+                v-if="clipboardUrl"
+                @click="addClipboardUrl"
+                class="clipboard-url-button"
+                title="Add URL from clipboard"
+              >
+                <ClipboardPaste :size="14" />
+                <span>Pin URL</span>
+              </button>
               <button @click="openAddWidgetModal" class="add-widget-button" title="Add Widget">
                 <Plus :size="14" />
                 <span>Add Widget</span>
@@ -2058,6 +2123,34 @@ body.study-mode .navbar {
   color: var(--text-primary);
 }
 
+.clipboard-url-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
+}
+
+.clipboard-url-button:hover {
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+}
+
+.clipboard-url-button:active {
+  transform: translateY(0);
+}
+
 .add-widget-button {
   display: flex;
   align-items: center;
@@ -2377,8 +2470,14 @@ body.study-mode .navbar {
   }
 
   /* Keep labels hidden in pane tabs header, but show in mobile subheader */
-  .pane-tabs-header .add-widget-button span {
+  .pane-tabs-header .add-widget-button span,
+  .pane-tabs-header .clipboard-url-button span {
     display: none;
+  }
+
+  .clipboard-url-button {
+    padding: 5px 10px;
+    font-size: 11px;
   }
 }
 
