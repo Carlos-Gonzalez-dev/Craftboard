@@ -3,9 +3,11 @@ import { defineStore } from 'pinia'
 import { fetchTasks, fetchDocuments, type CraftTask, type CraftDocument } from '../utils/craftApi'
 import { fetchCalendarEvents, type CalendarEvent } from '../utils/icalParser'
 import { useApiCache } from '../composables/useApiCache'
+import { useTasksStore } from './tasks'
 
 export const useTasksApiStore = defineStore('tasksApi', () => {
   const cache = useApiCache('tasks-cache-')
+  const tasksStore = useTasksStore()
 
   const inboxTasks = ref<CraftTask[]>([])
   const activeTasks = ref<CraftTask[]>([])
@@ -264,6 +266,9 @@ export const useTasksApiStore = defineStore('tasksApi', () => {
       inboxTasks.value = inbox
       activeTasks.value = active
       upcomingTasks.value = upcoming
+
+      // Sync with tasksStore for badge display
+      tasksStore.setAllTasks(inbox, active, upcoming)
 
       // Load daily notes and calendar events in parallel
       const [dailyNotesMadeCall, calendarMadeCall] = await Promise.all([
