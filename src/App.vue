@@ -104,6 +104,10 @@ provide('showAddWidgetModal', showAddWidgetModal)
 // Clipboard URL detection for quick Pin URL widget creation
 const clipboardUrl = ref<string | null>(null)
 const pendingPinUrl = ref<string | null>(null)
+const clipboardPermissionState = ref<PermissionState | null>(null)
+const clipboardAutoDetectEnabled = ref(
+  localStorage.getItem('clipboard-auto-detect') === 'true',
+)
 
 provide('pendingPinUrl', pendingPinUrl)
 
@@ -116,8 +120,56 @@ const isValidUrl = (text: string): boolean => {
   }
 }
 
+const checkClipboardPermission = async (): Promise<PermissionState | null> => {
+  try {
+    const permission = await navigator.permissions.query({
+      name: 'clipboard-read' as PermissionName,
+    })
+    clipboardPermissionState.value = permission.state
+    // Listen for permission changes
+    permission.onchange = () => {
+      clipboardPermissionState.value = permission.state
+      if (permission.state === 'granted' && clipboardAutoDetectEnabled.value) {
+        readClipboard()
+      }
+    }
+    return permission.state
+  } catch {
+    // Permissions API not supported
+    clipboardPermissionState.value = null
+    return null
+  }
+}
+
+const requestClipboardPermission = async (): Promise<boolean> => {
+  try {
+    // This will trigger the permission prompt
+    await navigator.clipboard.readText()
+    clipboardPermissionState.value = 'granted'
+    clipboardAutoDetectEnabled.value = true
+    localStorage.setItem('clipboard-auto-detect', 'true')
+    return true
+  } catch {
+    clipboardPermissionState.value = 'denied'
+    return false
+  }
+}
+
+// Provide clipboard permission functions for Settings
+provide('clipboardPermissionState', clipboardPermissionState)
+provide('clipboardAutoDetectEnabled', clipboardAutoDetectEnabled)
+provide('requestClipboardPermission', requestClipboardPermission)
+
 const readClipboard = async () => {
   if (!isDashboard.value) return
+  if (!clipboardAutoDetectEnabled.value) return
+
+  // Only read if permission is already granted (no popup)
+  const permissionState = await checkClipboardPermission()
+  if (permissionState !== 'granted') {
+    clipboardUrl.value = null
+    return
+  }
 
   try {
     const text = await navigator.clipboard.readText()
@@ -508,8 +560,10 @@ onMounted(() => {
   checkForUpdates()
   updateCheckInterval = window.setInterval(checkForUpdates, 5 * 60 * 1000)
 
-  // Initial clipboard read
-  readClipboard()
+  // Check clipboard permission status and read if allowed
+  checkClipboardPermission().then(() => {
+    readClipboard()
+  })
 
   if (isDashboard.value) {
     loadPanes()

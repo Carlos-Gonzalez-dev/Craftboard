@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, onUnmounted, watch, inject, h } from 'vue'
+import { ref, computed, onMounted, onActivated, onUnmounted, watch, inject, h, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Trash2, Settings, Database, Link, Plus, X, Info } from 'lucide-vue-next'
+import { Trash2, Settings, Database, Link, Plus, X, Info, Clipboard } from 'lucide-vue-next'
 import ViewTabs from '../components/ViewTabs.vue'
 import { Check, RefreshCw } from 'lucide-vue-next'
 import { useCollectionsApiStore } from '../stores/collectionsApi'
@@ -9,6 +9,40 @@ import { getCacheExpiryMinutes, setCacheExpiryMinutes, type Collection } from '.
 import { changelog } from '../utils/changelog'
 
 const collectionsApiStore = useCollectionsApiStore()
+
+// Clipboard permission management (injected from App.vue)
+const clipboardPermissionState = inject<Ref<PermissionState | null>>('clipboardPermissionState')
+const clipboardAutoDetectEnabled = inject<Ref<boolean>>('clipboardAutoDetectEnabled')
+const requestClipboardPermission = inject<() => Promise<boolean>>('requestClipboardPermission')
+
+const isRequestingClipboardPermission = ref(false)
+
+const handleClipboardToggle = async (event: Event) => {
+  const checkbox = event.target as HTMLInputElement
+  if (checkbox.checked) {
+    // User wants to enable - check if we need to request permission
+    if (clipboardPermissionState?.value !== 'granted') {
+      isRequestingClipboardPermission.value = true
+      const granted = await requestClipboardPermission?.()
+      isRequestingClipboardPermission.value = false
+      if (!granted) {
+        // Permission denied, uncheck the box
+        checkbox.checked = false
+        return
+      }
+    }
+    if (clipboardAutoDetectEnabled) {
+      clipboardAutoDetectEnabled.value = true
+    }
+    localStorage.setItem('clipboard-auto-detect', 'true')
+  } else {
+    // User wants to disable
+    if (clipboardAutoDetectEnabled) {
+      clipboardAutoDetectEnabled.value = false
+    }
+    localStorage.setItem('clipboard-auto-detect', 'false')
+  }
+}
 
 const apiUrl = ref('')
 const apiKey = ref('')
@@ -540,6 +574,37 @@ function importDataFromFile(event: Event) {
           <div class="settings-section">
             <h2>General Settings</h2>
             <p class="description">Basic dashboard configuration and preferences.</p>
+
+            <!-- Clipboard URL Detection -->
+            <div class="form-group clipboard-permission-group">
+              <label class="checkbox-label">
+                <input
+                  id="clipboard-auto-detect"
+                  type="checkbox"
+                  class="checkbox"
+                  :checked="clipboardAutoDetectEnabled"
+                  :disabled="isRequestingClipboardPermission"
+                  @change="handleClipboardToggle"
+                />
+                <span>Auto-detect URLs from clipboard</span>
+              </label>
+              <p class="field-hint">
+                When enabled, the dashboard will automatically detect URLs in your clipboard and show
+                a quick "Pin URL" button. This requires clipboard read permission.
+                <span v-if="clipboardPermissionState === 'granted'" class="permission-granted">
+                  (Permission granted)
+                </span>
+                <span v-else-if="clipboardPermissionState === 'denied'" class="permission-denied">
+                  (Permission denied - enable in browser settings)
+                </span>
+              </p>
+              <p class="field-hint" style="margin-top: 4px">
+                <strong>Tip:</strong> You can always paste URLs with Ctrl+V / Cmd+V without this
+                permission.
+              </p>
+            </div>
+
+            <div class="form-group-separator"></div>
 
             <div class="form-group">
               <label class="checkbox-label">
@@ -1145,6 +1210,25 @@ label {
   height: 18px;
   cursor: pointer;
   accent-color: var(--btn-primary-bg);
+}
+
+.clipboard-permission-group {
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+}
+
+.permission-granted {
+  color: #22c55e;
+  font-weight: 600;
+  font-style: normal;
+}
+
+.permission-denied {
+  color: #ef4444;
+  font-weight: 600;
+  font-style: normal;
 }
 
 .storage-info {
