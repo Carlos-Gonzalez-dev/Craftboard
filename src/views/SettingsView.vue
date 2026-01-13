@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onActivated, onUnmounted, watch, inject, h, t
 import { useRoute, useRouter } from 'vue-router'
 import { Trash2, Settings, Database, Link, Plus, X, Info, Clipboard } from 'lucide-vue-next'
 import ViewTabs from '../components/ViewTabs.vue'
-import { Check, RefreshCw } from 'lucide-vue-next'
+import { Check, RefreshCw, Loader2 } from 'lucide-vue-next'
 import { useCollectionsApiStore } from '../stores/collectionsApi'
 import { getCacheExpiryMinutes, setCacheExpiryMinutes, type Collection } from '../utils/craftApi'
 import { changelog } from '../utils/changelog'
@@ -63,6 +63,7 @@ const storageSize = ref(0)
 const collections = ref<Collection[]>([])
 const isLoadingCollections = ref(false)
 const collectionsError = ref<string | null>(null)
+const isSaving = ref(false)
 
 // Export/Import state
 const importFileInput = ref<HTMLInputElement | null>(null)
@@ -214,6 +215,44 @@ const autodiscoverCollections = async () => {
   }
 }
 
+// Helper function to render save button with loading state
+const renderSaveButton = () =>
+  h(
+    'button',
+    {
+      class: 'save-button-subheader',
+      onClick: () => saveSettings(),
+      disabled: isSaving.value,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '6px 12px',
+        background: isSaving.value
+          ? 'linear-gradient(135deg, #9ca3af 0%, #6b7280 100%)'
+          : 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+        color: 'white',
+        border: 'none',
+        borderRadius: '6px',
+        fontFamily: 'inherit',
+        fontSize: '12px',
+        fontWeight: '600',
+        cursor: isSaving.value ? 'not-allowed' : 'pointer',
+        transition: 'all 0.2s ease',
+        boxShadow: isSaving.value ? 'none' : '0 2px 4px rgba(34, 197, 94, 0.3)',
+        whiteSpace: 'nowrap',
+        opacity: isSaving.value ? '0.7' : '1',
+      },
+    },
+    [
+      h(isSaving.value ? Loader2 : Check, {
+        size: 16,
+        class: isSaving.value ? 'spinning' : '',
+      }),
+      h('span', isSaving.value ? 'Saving...' : 'Save Settings'),
+    ],
+  )
+
 onMounted(() => {
   // Load active tab from URL query parameter
   const tabFromUrl = route.query.tab as string
@@ -238,32 +277,7 @@ onMounted(() => {
             activeTab.value = tab
           },
         }),
-      right: () =>
-        h(
-          'button',
-          {
-            class: 'save-button-subheader',
-            onClick: () => saveSettings(),
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontFamily: 'inherit',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 2px 4px rgba(34, 197, 94, 0.3)',
-              whiteSpace: 'nowrap',
-            },
-          },
-          [h(Check, { size: 16 }), h('span', 'Save Settings')],
-        ),
+      right: renderSaveButton,
     })
   }
 })
@@ -280,32 +294,7 @@ onActivated(() => {
             activeTab.value = tab
           },
         }),
-      right: () =>
-        h(
-          'button',
-          {
-            class: 'save-button-subheader',
-            onClick: () => saveSettings(),
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontFamily: 'inherit',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 2px 4px rgba(34, 197, 94, 0.3)',
-              whiteSpace: 'nowrap',
-            },
-          },
-          [h(Check, { size: 16 }), h('span', 'Save Settings')],
-        ),
+      right: renderSaveButton,
     })
   }
 })
@@ -328,32 +317,24 @@ watch(activeTab, () => {
             activeTab.value = tab
           },
         }),
-      right: () =>
-        h(
-          'button',
-          {
-            class: 'save-button-subheader',
-            onClick: () => saveSettings(),
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontFamily: 'inherit',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 2px 4px rgba(34, 197, 94, 0.3)',
-              whiteSpace: 'nowrap',
-            },
+      right: renderSaveButton,
+    })
+  }
+})
+
+// Watch isSaving to update save button state
+watch(isSaving, () => {
+  if (setSubheader) {
+    setSubheader({
+      default: () =>
+        h(ViewTabs, {
+          tabs: tabs,
+          activeTab: activeTab.value,
+          'onUpdate:activeTab': (tab: string) => {
+            activeTab.value = tab
           },
-          [h(Check, { size: 16 }), h('span', 'Save Settings')],
-        ),
+        }),
+      right: renderSaveButton,
     })
   }
 })
@@ -386,74 +367,83 @@ const clearLocalStorage = () => {
 }
 
 const saveSettings = async (skipAutodiscovery = false) => {
-  localStorage.setItem('craft-api-url', apiUrl.value)
-  localStorage.setItem('craft-api-key', apiKey.value || '')
-  localStorage.setItem('craft-api-token', apiKey.value || '') // Also save as token for craftApi
+  if (isSaving.value) return
+  isSaving.value = true
 
-  // Save collection prefix and IDs
-  localStorage.setItem('collection-prefix', collectionPrefix.value)
-  requiredCollections.value.forEach((col) => {
-    const id = collectionIds.value[col.key]?.trim()
-    if (id) {
-      localStorage.setItem(`collection-id-${col.key}`, id)
-    } else {
-      localStorage.removeItem(`collection-id-${col.key}`)
-    }
-  })
+  try {
+    localStorage.setItem('craft-api-url', apiUrl.value)
+    localStorage.setItem('craft-api-key', apiKey.value || '')
+    localStorage.setItem('craft-api-token', apiKey.value || '') // Also save as token for craftApi
 
-  localStorage.setItem('craft-link-preference', craftLinkPreference.value)
-  localStorage.setItem('dashboard-title', dashboardTitle.value)
-  localStorage.setItem('show-flashcards-tab', String(showFlashcardsTab.value))
-  localStorage.setItem('show-music-tab', String(showMusicTab.value))
-  localStorage.setItem('show-graph-tab', String(showGraphTab.value))
-  localStorage.setItem('show-bookmarks-tab', String(showBookmarksTab.value))
-  localStorage.setItem('show-rss-tab', String(showRSSTab.value))
-  localStorage.setItem('show-tasks-tab', String(showTasksTab.value))
-  localStorage.setItem('show-tags-tab', String(showTagsTab.value))
-  // Save calendar URLs (filter out empty strings)
-  const validUrls = calendarUrls.value.filter((url) => url.trim() !== '')
-  localStorage.setItem('calendar-urls', JSON.stringify(validUrls))
-  setCacheExpiryMinutes(cacheExpiryMinutes.value)
-
-  // Track if spaceId was previously configured
-  const hadSpaceId = !!localStorage.getItem('craft-space-id')
-
-  // If spaceId is provided, save it; otherwise try to fetch it
-  if (spaceId.value) {
-    localStorage.setItem('craft-space-id', spaceId.value)
-  } else if (apiUrl.value) {
-    // Try to automatically fetch spaceId from API
-    try {
-      const { fetchAndCacheSpaceId } = await import('../utils/craftApi')
-      const fetchedSpaceId = await fetchAndCacheSpaceId()
-      if (fetchedSpaceId) {
-        spaceId.value = fetchedSpaceId
+    // Save collection prefix and IDs
+    localStorage.setItem('collection-prefix', collectionPrefix.value)
+    requiredCollections.value.forEach((col) => {
+      const id = collectionIds.value[col.key]?.trim()
+      if (id) {
+        localStorage.setItem(`collection-id-${col.key}`, id)
+      } else {
+        localStorage.removeItem(`collection-id-${col.key}`)
       }
-    } catch (e) {
-      console.error('Failed to fetch spaceId:', e)
-    }
-  }
+    })
 
-  // Auto-trigger autodiscovery only if space ID was not previously configured
-  // This ensures it only runs the first time, not on every save
-  if (apiUrl.value && !skipAutodiscovery && !hadSpaceId) {
-    const hasAllIds = requiredCollections.value.every((col) => collectionIds.value[col.key]?.trim())
-    if (!hasAllIds) {
+    localStorage.setItem('craft-link-preference', craftLinkPreference.value)
+    localStorage.setItem('dashboard-title', dashboardTitle.value)
+    localStorage.setItem('show-flashcards-tab', String(showFlashcardsTab.value))
+    localStorage.setItem('show-music-tab', String(showMusicTab.value))
+    localStorage.setItem('show-graph-tab', String(showGraphTab.value))
+    localStorage.setItem('show-bookmarks-tab', String(showBookmarksTab.value))
+    localStorage.setItem('show-rss-tab', String(showRSSTab.value))
+    localStorage.setItem('show-tasks-tab', String(showTasksTab.value))
+    localStorage.setItem('show-tags-tab', String(showTagsTab.value))
+    // Save calendar URLs (filter out empty strings)
+    const validUrls = calendarUrls.value.filter((url) => url.trim() !== '')
+    localStorage.setItem('calendar-urls', JSON.stringify(validUrls))
+    setCacheExpiryMinutes(cacheExpiryMinutes.value)
+
+    // Track if spaceId was previously configured
+    const hadSpaceId = !!localStorage.getItem('craft-space-id')
+
+    // If spaceId is provided, save it; otherwise try to fetch it
+    if (spaceId.value) {
+      localStorage.setItem('craft-space-id', spaceId.value)
+    } else if (apiUrl.value) {
+      // Try to automatically fetch spaceId from API
       try {
-        await autodiscoverCollections()
+        const { fetchAndCacheSpaceId } = await import('../utils/craftApi')
+        const fetchedSpaceId = await fetchAndCacheSpaceId()
+        if (fetchedSpaceId) {
+          spaceId.value = fetchedSpaceId
+        }
       } catch (e) {
-        console.error('Failed to autodiscover collections:', e)
+        console.error('Failed to fetch spaceId:', e)
       }
     }
+
+    // Auto-trigger autodiscovery only if space ID was not previously configured
+    // This ensures it only runs the first time, not on every save
+    if (apiUrl.value && !skipAutodiscovery && !hadSpaceId) {
+      const hasAllIds = requiredCollections.value.every(
+        (col) => collectionIds.value[col.key]?.trim(),
+      )
+      if (!hasAllIds) {
+        try {
+          await autodiscoverCollections()
+        } catch (e) {
+          console.error('Failed to autodiscover collections:', e)
+        }
+      }
+    }
+
+    calculateStorageSize()
+
+    // Dispatch events to update UI in App.vue
+    window.dispatchEvent(new Event('dashboard-title-updated'))
+    window.dispatchEvent(new Event('nav-tabs-updated'))
+
+    alert('Settings saved!')
+  } finally {
+    isSaving.value = false
   }
-
-  calculateStorageSize()
-
-  // Dispatch events to update UI in App.vue
-  window.dispatchEvent(new Event('dashboard-title-updated'))
-  window.dispatchEvent(new Event('nav-tabs-updated'))
-
-  alert('Settings saved!')
 }
 
 // Load settings on mount

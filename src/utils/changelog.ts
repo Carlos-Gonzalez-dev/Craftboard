@@ -11,6 +11,7 @@ export const changelog: ChangelogEntry[] = [
       'Invalidate cached .js and .css files when a new version is released to avoid loading old files from cache',
       'Ability to choose a diferent prefix for your collections (useful for workspaces with many collections, I use one set for personal use and another for work)',
       'Moved clipboard permission into settings, users must now enable it manually',
+      'Added loading indicator to save buttons on settings page,',
     ],
   },
   {
