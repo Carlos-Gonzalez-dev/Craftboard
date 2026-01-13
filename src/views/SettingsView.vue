@@ -15,6 +15,7 @@ const apiKey = ref('')
 const spaceId = ref('')
 const craftLinkPreference = ref<'app' | 'web'>('app')
 const dashboardTitle = ref('Craftboard')
+const collectionPrefix = ref('Craftboard')
 const showFlashcardsTab = ref(true)
 const showMusicTab = ref(true)
 const showGraphTab = ref(true)
@@ -32,17 +33,30 @@ const collectionsError = ref<string | null>(null)
 // Export/Import state
 const importFileInput = ref<HTMLInputElement | null>(null)
 
-// Required collections for the app
-const requiredCollections = [
-  { key: 'decks', label: 'Craftboard Decks', name: 'Craftboard Decks' },
-  { key: 'flashcards', label: 'Craftboard Flashcards', name: 'Craftboard Flashcards' },
-  { key: 'playlists', label: 'Craftboard Playlists', name: 'Craftboard Playlists' },
-  { key: 'artists', label: 'Craftboard Artists', name: 'Craftboard Artists' },
-  { key: 'genres', label: 'Craftboard Genres', name: 'Craftboard Genres' },
-  { key: 'bookmarks', label: 'Craftboard Bookmarks', name: 'Craftboard Bookmarks' },
-  { key: 'rss', label: 'Craftboard RSS', name: 'Craftboard RSS' },
-  { key: 'quotes', label: 'Craftboard Quotes', name: 'Craftboard Quotes' },
+// Base collection types without prefix
+const collectionTypes = [
+  { key: 'decks', baseName: 'Decks' },
+  { key: 'flashcards', baseName: 'Flashcards' },
+  { key: 'playlists', baseName: 'Playlists' },
+  { key: 'artists', baseName: 'Artists' },
+  { key: 'genres', baseName: 'Genres' },
+  { key: 'bookmarks', baseName: 'Bookmarks' },
+  { key: 'rss', baseName: 'RSS' },
+  { key: 'quotes', baseName: 'Quotes' },
 ]
+
+// Required collections computed based on prefix
+const requiredCollections = computed(() => {
+  const prefix = collectionPrefix.value.trim()
+  return collectionTypes.map((type) => {
+    const name = prefix ? `${prefix} ${type.baseName}` : type.baseName
+    return {
+      key: type.key,
+      label: name,
+      name: name,
+    }
+  })
+})
 
 // Collection IDs stored in settings
 const collectionIds = ref<Record<string, string>>({})
@@ -112,7 +126,7 @@ const autodiscoverCollections = async () => {
     let updatedCount = 0
 
     // Search for each required collection by exact name
-    requiredCollections.forEach((required) => {
+    requiredCollections.value.forEach((required) => {
       const found = allCollections.find(
         (col) => col.name.toLowerCase() === required.name.toLowerCase(),
       )
@@ -128,11 +142,11 @@ const autodiscoverCollections = async () => {
     })
 
     // Check if we have all required collections
-    const hasAllIds = requiredCollections.every((col) => collectionIds.value[col.key]?.trim())
+    const hasAllIds = requiredCollections.value.every((col) => collectionIds.value[col.key]?.trim())
 
     if (!hasAllIds && discoveredCount === 0 && updatedCount === 0) {
       // Only show error if we don't have all IDs and found nothing new
-      const missingCollections = requiredCollections
+      const missingCollections = requiredCollections.value
         .filter((col) => !collectionIds.value[col.key]?.trim())
         .map((col) => col.label)
         .join(', ')
@@ -142,7 +156,7 @@ const autodiscoverCollections = async () => {
       collectionsError.value = null
 
       // Save discovered IDs to localStorage immediately
-      requiredCollections.forEach((required) => {
+      requiredCollections.value.forEach((required) => {
         const id = collectionIds.value[required.key]
         if (id) {
           localStorage.setItem(`collection-id-${required.key}`, id)
@@ -342,8 +356,9 @@ const saveSettings = async (skipAutodiscovery = false) => {
   localStorage.setItem('craft-api-key', apiKey.value || '')
   localStorage.setItem('craft-api-token', apiKey.value || '') // Also save as token for craftApi
 
-  // Save collection IDs
-  requiredCollections.forEach((col) => {
+  // Save collection prefix and IDs
+  localStorage.setItem('collection-prefix', collectionPrefix.value)
+  requiredCollections.value.forEach((col) => {
     const id = collectionIds.value[col.key]?.trim()
     if (id) {
       localStorage.setItem(`collection-id-${col.key}`, id)
@@ -388,7 +403,7 @@ const saveSettings = async (skipAutodiscovery = false) => {
   // Auto-trigger autodiscovery only if space ID was not previously configured
   // This ensures it only runs the first time, not on every save
   if (apiUrl.value && !skipAutodiscovery && !hadSpaceId) {
-    const hasAllIds = requiredCollections.every((col) => collectionIds.value[col.key]?.trim())
+    const hasAllIds = requiredCollections.value.every((col) => collectionIds.value[col.key]?.trim())
     if (!hasAllIds) {
       try {
         await autodiscoverCollections()
@@ -413,6 +428,7 @@ apiKey.value = localStorage.getItem('craft-api-key') || ''
 spaceId.value = localStorage.getItem('craft-space-id') || ''
 const savedPreference = localStorage.getItem('craft-link-preference')
 dashboardTitle.value = localStorage.getItem('dashboard-title') || 'Craftboard'
+collectionPrefix.value = localStorage.getItem('collection-prefix') ?? 'Craftboard'
 craftLinkPreference.value = (savedPreference === 'web' ? 'web' : 'app') as 'app' | 'web'
 const savedShowFlashcards = localStorage.getItem('show-flashcards-tab')
 showFlashcardsTab.value = savedShowFlashcards === null ? true : savedShowFlashcards === 'true'
@@ -430,7 +446,7 @@ const savedShowTags = localStorage.getItem('show-tags-tab')
 showTagsTab.value = savedShowTags === null ? true : savedShowTags === 'true'
 
 // Load collection IDs
-requiredCollections.forEach((col) => {
+collectionTypes.forEach((col) => {
   const storedId = localStorage.getItem(`collection-id-${col.key}`)
   collectionIds.value[col.key] = storedId || ''
 })
@@ -719,6 +735,22 @@ function importDataFromFile(event: Event) {
             </div>
 
             <div class="form-group-separator"></div>
+
+            <div class="form-group">
+              <label for="collection-prefix">Collection Prefix</label>
+              <input
+                id="collection-prefix"
+                v-model="collectionPrefix"
+                type="text"
+                placeholder="Leave empty for no prefix"
+                class="input"
+              />
+              <p class="field-hint">
+                Prefix for collection names. Default is "Craftboard". Leave empty to search for
+                collections without prefix (e.g., "Decks" instead of "Craftboard Decks"). This
+                allows you to have multiple sets of collections with different prefixes.
+              </p>
+            </div>
 
             <div class="form-group">
               <label>Collection IDs</label>
