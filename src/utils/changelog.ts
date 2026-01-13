@@ -10,6 +10,7 @@ export const changelog: ChangelogEntry[] = [
       'Prevent infinite loop when adding a new pane while saving state on localStorage',
       'Invalidate cached .js and .css files when a new version is released to avoid loading old files from cache',
       'Ability to choose a diferent prefix for your collections (useful for workspaces with many collections, I use one set for personal use and another for work)',
+      'Moved clipboard permission into settings, users must now enable it manually',
     ],
   },
   {
