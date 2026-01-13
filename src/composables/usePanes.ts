@@ -15,6 +15,8 @@ const activePaneId = ref<string>('')
 
 // Initialize watchers and listeners only once
 let initialized = false
+// Flag to prevent saving when syncing from storage events
+let isSyncingFromStorage = false
 
 const loadPanes = () => {
   try {
@@ -70,26 +72,41 @@ export function usePanes() {
     // Watch for localStorage changes from other tabs/windows
     if (typeof window !== 'undefined') {
       window.addEventListener('storage', (e) => {
-        if (e.key === PANES_STORAGE_KEY && e.newValue) {
-          panes.value = JSON.parse(e.newValue)
-        }
-        if (e.key === ACTIVE_PANE_KEY && e.newValue) {
-          activePaneId.value = e.newValue
+        if (e.key === PANES_STORAGE_KEY || e.key === ACTIVE_PANE_KEY) {
+          // Set flag to prevent watchers from saving back to localStorage
+          isSyncingFromStorage = true
+          try {
+            if (e.key === PANES_STORAGE_KEY && e.newValue) {
+              panes.value = JSON.parse(e.newValue)
+            }
+            if (e.key === ACTIVE_PANE_KEY && e.newValue) {
+              activePaneId.value = e.newValue
+            }
+          } finally {
+            // Reset flag after Vue's reactivity cycle completes
+            setTimeout(() => {
+              isSyncingFromStorage = false
+            }, 0)
+          }
         }
       })
     }
 
-    // Watch for changes and save
+    // Watch for changes and save (but not when syncing from storage)
     watch(
       () => panes.value,
       () => {
-        savePanes()
+        if (!isSyncingFromStorage) {
+          savePanes()
+        }
       },
       { deep: true },
     )
 
     watch(activePaneId, () => {
-      savePanes()
+      if (!isSyncingFromStorage) {
+        savePanes()
+      }
     })
   }
 
