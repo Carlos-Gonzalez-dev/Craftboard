@@ -6,7 +6,10 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: '2026-01-13',
-    changes: ['Prevent infinite loop when adding a new pane while saving state on localStorage'],
+    changes: [
+      'Prevent infinite loop when adding a new pane while saving state on localStorage',
+      'Invalidate cached .js and .css files when a new version is released to avoid loading old files from cache',
+    ],
   },
   {
     date: '2026-01-12v2',
