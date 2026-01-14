@@ -1036,10 +1036,9 @@ body.study-mode .navbar {
 .global-music-player {
   position: fixed;
   bottom: 48px;
-  right: 0;
-  width: 350px;
+  right: 20px;
   max-width: calc(100vw - 40px);
-  z-index: 1000;
+  z-index: 900;
   transition: all 0.3s ease;
 }
 
@@ -1058,6 +1057,7 @@ body.study-mode .navbar {
 .global-music-player:not(:empty):hover {
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
 }
+
 
 .footer-left {
   display: flex;

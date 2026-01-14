@@ -14,6 +14,9 @@ import {
   ChevronUp,
   Maximize,
   Minimize,
+  SkipBack,
+  SkipForward,
+  Shuffle,
 } from 'lucide-vue-next'
 import {
   getApiUrl,
@@ -499,6 +502,53 @@ const navigateToMusic = () => {
   }
 }
 
+// YouTube player controls
+const isShuffleEnabled = ref(false)
+const isPlaylist = ref(false)
+
+const getYouTubePlayer = () => {
+  const playerWrapper = document.querySelector('.global-player-wrapper')
+  if (playerWrapper) {
+    const playerId = playerWrapper.querySelector('.youtube-player')?.id
+    if (playerId) {
+      return (window as any)[`ytplayer_${playerId}`]
+    }
+  }
+  return null
+}
+
+const previousTrack = () => {
+  const player = getYouTubePlayer()
+  if (player && typeof player.previousVideo === 'function') {
+    player.previousVideo()
+  }
+}
+
+const nextTrack = () => {
+  const player = getYouTubePlayer()
+  if (player && typeof player.nextVideo === 'function') {
+    player.nextVideo()
+  }
+}
+
+const toggleShuffle = () => {
+  const player = getYouTubePlayer()
+  if (player && typeof player.setShuffle === 'function') {
+    isShuffleEnabled.value = !isShuffleEnabled.value
+    player.setShuffle(isShuffleEnabled.value)
+  }
+}
+
+// Check if current URL is a playlist
+const checkIfPlaylist = () => {
+  if (selectedPlaylist.value?.properties?.url) {
+    const url = selectedPlaylist.value.properties.url
+    isPlaylist.value = url.includes('list=')
+  } else {
+    isPlaylist.value = false
+  }
+}
+
 // Floating player state
 const isCollapsed = ref(false)
 const isFullscreen = ref(false)
@@ -509,7 +559,19 @@ const stateBeforeFullscreen = ref({
   size: { width: 350, height: 250 },
   moved: false,
 })
-const playerSize = ref({ width: 350, height: 250 })
+
+// Calculate initial player size based on screen width
+const getInitialPlayerSize = () => {
+  const maxWidth = Math.min(560, window.innerWidth - 40)
+  const headerHeight = 48 // header
+  const controlsHeight = 48 // media controls bar
+  const videoHeight = Math.round(maxWidth * 9 / 16)
+  return {
+    width: maxWidth,
+    height: videoHeight + headerHeight + controlsHeight,
+  }
+}
+const playerSize = ref(getInitialPlayerSize())
 const isDragging = ref(false)
 const isResizing = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
@@ -571,9 +633,12 @@ const toggleFullscreen = () => {
   }
 }
 
-const startDrag = (e: MouseEvent) => {
+const startDrag = (e: MouseEvent | TouchEvent) => {
   e.preventDefault()
   e.stopPropagation()
+
+  const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+  const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
 
   // If this is the first drag, get the actual position from the DOM
   if (!userHasMoved.value) {
@@ -586,45 +651,52 @@ const startDrag = (e: MouseEvent) => {
 
   isDragging.value = true
   dragStart.value = {
-    x: e.clientX - playerPosition.value.x,
-    y: e.clientY - playerPosition.value.y,
+    x: clientX - playerPosition.value.x,
+    y: clientY - playerPosition.value.y,
   }
   userHasMoved.value = true
   document.body.style.userSelect = 'none'
 }
 
-const startResize = (e: MouseEvent) => {
+const startResize = (e: MouseEvent | TouchEvent) => {
   e.preventDefault()
   e.stopPropagation()
+
+  const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+  const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+
   isResizing.value = true
   resizeStart.value = {
-    x: e.clientX,
-    y: e.clientY,
+    x: clientX,
+    y: clientY,
     width: playerSize.value.width,
     height: playerSize.value.height,
   }
   document.body.style.userSelect = 'none'
 }
 
-const onMouseMove = (e: MouseEvent) => {
+const onMove = (e: MouseEvent | TouchEvent) => {
+  const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+  const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+
   if (isDragging.value) {
     e.preventDefault()
     playerPosition.value = {
-      x: e.clientX - dragStart.value.x,
-      y: e.clientY - dragStart.value.y,
+      x: clientX - dragStart.value.x,
+      y: clientY - dragStart.value.y,
     }
   } else if (isResizing.value) {
     e.preventDefault()
-    const deltaX = e.clientX - resizeStart.value.x
-    const deltaY = e.clientY - resizeStart.value.y
+    const deltaX = clientX - resizeStart.value.x
+    const deltaY = clientY - resizeStart.value.y
     playerSize.value = {
-      width: Math.max(300, resizeStart.value.width + deltaX),
+      width: Math.max(280, resizeStart.value.width + deltaX),
       height: Math.max(200, resizeStart.value.height + deltaY),
     }
   }
 }
 
-const onMouseUp = () => {
+const onEnd = () => {
   if (isDragging.value || isResizing.value) {
     isDragging.value = false
     isResizing.value = false
@@ -632,15 +704,19 @@ const onMouseUp = () => {
   }
 }
 
-// Add global mouse event listeners for drag/resize
+// Add global mouse/touch event listeners for drag/resize
 onMounted(() => {
-  window.addEventListener('mousemove', onMouseMove)
-  window.addEventListener('mouseup', onMouseUp)
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onEnd)
+  window.addEventListener('touchmove', onMove, { passive: false })
+  window.addEventListener('touchend', onEnd)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('mousemove', onMouseMove)
-  window.removeEventListener('mouseup', onMouseUp)
+  window.removeEventListener('mousemove', onMove)
+  window.removeEventListener('mouseup', onEnd)
+  window.removeEventListener('touchmove', onMove)
+  window.removeEventListener('touchend', onEnd)
   // Clean up state in case unmounted during drag/resize
   isDragging.value = false
   isResizing.value = false
@@ -845,6 +921,16 @@ watch(
     }
   },
 )
+
+// Watch for playlist changes to update controls state
+watch(
+  selectedPlaylist,
+  () => {
+    checkIfPlaylist()
+    isShuffleEnabled.value = false
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -1006,7 +1092,7 @@ watch(
               }"
             >
               <div class="floating-player-header">
-                <div class="drag-handle" @mousedown="startDrag" title="Drag to move">
+                <div class="drag-handle" @mousedown="startDrag" @touchstart="startDrag" title="Drag to move">
                   <GripVertical :size="14" />
                 </div>
                 <div class="floating-player-info">
@@ -1063,6 +1149,30 @@ watch(
                   </button>
                 </div>
               </div>
+              <div v-if="isPlaylist && !isCollapsed" class="media-controls-bar">
+                <button
+                  @click.stop="previousTrack"
+                  class="media-button"
+                  title="Previous track"
+                >
+                  <SkipBack :size="16" />
+                </button>
+                <button
+                  @click.stop="nextTrack"
+                  class="media-button"
+                  title="Next track"
+                >
+                  <SkipForward :size="16" />
+                </button>
+                <button
+                  @click.stop="toggleShuffle"
+                  class="media-button"
+                  :class="{ 'is-active': isShuffleEnabled }"
+                  title="Toggle shuffle"
+                >
+                  <Shuffle :size="16" />
+                </button>
+              </div>
               <div class="floating-player-content" :class="{ 'is-hidden': isCollapsed }">
                 <component
                   :is="YoutubePlayer"
@@ -1070,7 +1180,7 @@ watch(
                   :key="selectedPlaylist.id"
                 />
               </div>
-              <div v-if="!isCollapsed" class="resize-handle" @mousedown="startResize"></div>
+              <div v-if="!isCollapsed" class="resize-handle" @mousedown="startResize" @touchstart="startResize"></div>
             </div>
           </Teleport>
 
@@ -1563,7 +1673,7 @@ watch(
 }
 
 .floating-player-header {
-  padding: 12px;
+  padding: 10px 12px;
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-primary);
   transition: background 0.2s ease;
@@ -1572,6 +1682,7 @@ watch(
   justify-content: space-between;
   gap: 8px;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .drag-handle {
@@ -1583,6 +1694,7 @@ watch(
   border-radius: 4px;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  touch-action: none;
 }
 
 .drag-handle:hover {
@@ -1666,6 +1778,53 @@ watch(
   color: var(--text-primary);
 }
 
+.header-button.is-active {
+  color: var(--btn-primary-bg);
+  background: var(--bg-secondary);
+}
+
+.media-controls-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.media-button {
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.media-button:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--text-tertiary);
+}
+
+.media-button:active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.media-button.is-active {
+  color: var(--btn-primary-bg);
+  background: var(--bg-primary);
+  border-color: var(--btn-primary-bg);
+}
+
 .floating-player-content {
   flex: 1;
   min-height: 0;
@@ -1689,23 +1848,28 @@ watch(
   position: absolute;
   bottom: 0;
   right: 0;
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   cursor: se-resize;
   background: linear-gradient(
     135deg,
     transparent 0%,
     transparent 50%,
     var(--text-tertiary) 50%,
-    var(--text-tertiary) 60%,
-    transparent 60%,
-    transparent 70%,
-    var(--text-tertiary) 70%,
-    var(--text-tertiary) 80%,
-    transparent 80%
+    var(--text-tertiary) 58%,
+    transparent 58%,
+    transparent 66%,
+    var(--text-tertiary) 66%,
+    var(--text-tertiary) 74%,
+    transparent 74%,
+    transparent 82%,
+    var(--text-tertiary) 82%,
+    var(--text-tertiary) 90%,
+    transparent 90%
   );
   opacity: 0.5;
   transition: opacity 0.2s ease;
+  touch-action: none;
 }
 
 .resize-handle:hover {

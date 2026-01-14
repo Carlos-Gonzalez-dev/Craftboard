@@ -13,6 +13,7 @@ export const changelog: ChangelogEntry[] = [
       'Improved PIN Block Widget search',
       'Add button to add tasks directly from Document Widget',
       'Improve music player drag and resize behavior',
+      'Added buttons to change song when playing a YouTube playlist',
     ],
   },
   {
