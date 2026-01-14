@@ -173,54 +173,32 @@ const { isCompactView } = useWidgetView()
   display: none;
 }
 
-/* Resize handle visibility */
+/* Resize handle - invisible, just cursor change on corner */
 :deep(.vgl-item__resizer) {
-  width: 20px;
-  height: 20px;
-  right: 4px;
-  bottom: 4px;
+  width: 16px;
+  height: 16px;
+  right: 0;
+  bottom: 0;
   background: transparent;
   border: none;
-  opacity: 0.5;
-  transition:
-    opacity 0.2s,
-    transform 0.2s;
-  border-radius: 0 0 8px 0;
+  opacity: 0;
   cursor: se-resize;
+  border-radius: 0 0 12px 0;
 }
 
-:deep(.vgl-item__resizer::after) {
-  content: '';
-  position: absolute;
-  right: 2px;
-  bottom: 2px;
-  width: 12px;
-  height: 12px;
-  background: linear-gradient(
-    135deg,
-    transparent 0%,
-    transparent 30%,
-    var(--text-tertiary) 30%,
-    var(--text-tertiary) 40%,
-    transparent 40%,
-    transparent 50%,
-    var(--text-tertiary) 50%,
-    var(--text-tertiary) 60%,
-    transparent 60%,
-    transparent 70%,
-    var(--text-tertiary) 70%,
-    var(--text-tertiary) 80%,
-    transparent 80%
-  );
-}
-
-:deep(.vgl-item__resizer:before) {
+:deep(.vgl-item__resizer::after),
+:deep(.vgl-item__resizer::before) {
   display: none;
 }
 
-:deep(.vgl-item:hover .vgl-item__resizer),
-:deep(.vgl-item__resizer:hover) {
+/* Show subtle indicator only on widget hover */
+:deep(.vgl-item:hover .vgl-item__resizer) {
   opacity: 1;
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    var(--text-quaternary, rgba(255, 255, 255, 0.1)) 50%
+  );
 }
 
 /* Hide resize handles in compact view */

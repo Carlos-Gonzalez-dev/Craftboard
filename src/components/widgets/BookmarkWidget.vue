@@ -281,10 +281,10 @@ watch(
 }
 
 .config-view {
-  padding: 16px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   height: 100%;
   overflow-y: auto;
 }
@@ -468,7 +468,7 @@ watch(
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 6px;
   position: relative;
   container-type: inline-size;
 }

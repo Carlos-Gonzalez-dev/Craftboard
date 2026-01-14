@@ -771,7 +771,7 @@ const { isCompactView } = useWidgetView()
 .widget-content {
   flex: 1;
   overflow: auto;
-  padding: 10px;
+  padding: 10px 6px;
   background: var(--widget-bg);
   border-radius: 0 0 8px 8px;
   color: var(--text-primary);

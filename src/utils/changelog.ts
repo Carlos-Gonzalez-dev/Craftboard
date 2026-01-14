@@ -6,7 +6,11 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: '2026-01-14',
-    changes: ['Improve performance of PomodoroWidget'],
+    changes: [
+      'Improve performance of PomodoroWidget',
+      'Reduce padding on most widgets to fit more content',
+      'Remove resize icon, it would be visible only when hovering the bottom right corner',
+    ],
   },
   {
     date: '2026-01-13',
