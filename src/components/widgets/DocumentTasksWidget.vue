@@ -9,6 +9,7 @@ import {
   RotateCw,
   Link as LinkIcon,
   Settings,
+  Plus,
 } from 'lucide-vue-next'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
@@ -23,6 +24,7 @@ import {
   type CraftDocument,
 } from '../../utils/craftApi'
 import ProgressIndicator from '../ProgressIndicator.vue'
+import AddTaskModal from '../AddTaskModal.vue'
 
 const props = defineProps<{
   widget: Widget
@@ -55,6 +57,22 @@ const completedApiCalls = ref(0)
 
 // Debounce timer for search
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// Add task modal
+const showAddTaskModal = ref(false)
+
+const openAddTaskModal = () => {
+  showAddTaskModal.value = true
+}
+
+const closeAddTaskModal = () => {
+  showAddTaskModal.value = false
+}
+
+const handleTaskAdded = () => {
+  // Optionally refresh tasks after adding (though with craftdocs:// scheme we can't know when it's done)
+  // The user will need to manually refresh or wait for the cache to expire
+}
 
 // Search documents with debounce
 const performSearch = async () => {
@@ -592,6 +610,14 @@ watch(
       <div v-if="!isLoading" class="widget-footer">
         <button
           v-if="documentId"
+          @click="openAddTaskModal"
+          class="footer-button"
+          title="Add task to document"
+        >
+          <Plus :size="14" />
+        </button>
+        <button
+          v-if="documentId"
           @click="openConfiguredDocument"
           class="footer-button"
           title="Open document in Craft"
@@ -611,6 +637,15 @@ watch(
         </button>
       </div>
     </div>
+
+    <!-- Add Task Modal -->
+    <AddTaskModal
+      v-if="showAddTaskModal && documentId"
+      :document-id="documentId"
+      :document-title="documentTitle"
+      @close="closeAddTaskModal"
+      @added="handleTaskAdded"
+    />
   </div>
 </template>
 
