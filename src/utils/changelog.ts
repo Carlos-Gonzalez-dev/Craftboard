@@ -12,6 +12,7 @@ export const changelog: ChangelogEntry[] = [
       'Remove resize icon, it would be visible only when hovering the bottom right corner',
       'Improved PIN Block Widget search',
       'Add button to add tasks directly from Document Widget',
+      'Improve music player drag and resize behavior',
     ],
   },
   {

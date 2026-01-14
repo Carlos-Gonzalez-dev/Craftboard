@@ -513,6 +513,7 @@ const playerSize = ref({ width: 350, height: 250 })
 const isDragging = ref(false)
 const isResizing = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
+const resizeStart = ref({ x: 0, y: 0, width: 0, height: 0 })
 const userHasMoved = ref(false)
 
 // Watch for player size changes and update YouTube iframe
@@ -571,63 +572,79 @@ const toggleFullscreen = () => {
 }
 
 const startDrag = (e: MouseEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+
+  // If this is the first drag, get the actual position from the DOM
+  if (!userHasMoved.value) {
+    const playerEl = (e.target as HTMLElement).closest('.global-player-wrapper') as HTMLElement
+    if (playerEl) {
+      const rect = playerEl.getBoundingClientRect()
+      playerPosition.value = { x: rect.left, y: rect.top }
+    }
+  }
+
   isDragging.value = true
   dragStart.value = {
     x: e.clientX - playerPosition.value.x,
     y: e.clientY - playerPosition.value.y,
   }
   userHasMoved.value = true
-}
-
-const onDrag = (e: MouseEvent) => {
-  if (!isDragging.value) return
-  playerPosition.value = {
-    x: e.clientX - dragStart.value.x,
-    y: e.clientY - dragStart.value.y,
-  }
-}
-
-const stopDrag = () => {
-  isDragging.value = false
+  document.body.style.userSelect = 'none'
 }
 
 const startResize = (e: MouseEvent) => {
+  e.preventDefault()
   e.stopPropagation()
   isResizing.value = true
-  dragStart.value = {
+  resizeStart.value = {
     x: e.clientX,
     y: e.clientY,
+    width: playerSize.value.width,
+    height: playerSize.value.height,
+  }
+  document.body.style.userSelect = 'none'
+}
+
+const onMouseMove = (e: MouseEvent) => {
+  if (isDragging.value) {
+    e.preventDefault()
+    playerPosition.value = {
+      x: e.clientX - dragStart.value.x,
+      y: e.clientY - dragStart.value.y,
+    }
+  } else if (isResizing.value) {
+    e.preventDefault()
+    const deltaX = e.clientX - resizeStart.value.x
+    const deltaY = e.clientY - resizeStart.value.y
+    playerSize.value = {
+      width: Math.max(300, resizeStart.value.width + deltaX),
+      height: Math.max(200, resizeStart.value.height + deltaY),
+    }
   }
 }
 
-const onResize = (e: MouseEvent) => {
-  if (!isResizing.value) return
-  const deltaX = e.clientX - dragStart.value.x
-  const deltaY = e.clientY - dragStart.value.y
-  playerSize.value = {
-    width: Math.max(300, playerSize.value.width + deltaX),
-    height: Math.max(200, playerSize.value.height + deltaY),
+const onMouseUp = () => {
+  if (isDragging.value || isResizing.value) {
+    isDragging.value = false
+    isResizing.value = false
+    document.body.style.userSelect = ''
   }
-  dragStart.value = { x: e.clientX, y: e.clientY }
 }
 
-const stopResize = () => {
-  isResizing.value = false
-}
-
-// Add global mouse event listeners
+// Add global mouse event listeners for drag/resize
 onMounted(() => {
-  window.addEventListener('mousemove', onDrag)
-  window.addEventListener('mousemove', onResize)
-  window.addEventListener('mouseup', stopDrag)
-  window.addEventListener('mouseup', stopResize)
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('mousemove', onDrag)
-  window.removeEventListener('mousemove', onResize)
-  window.removeEventListener('mouseup', stopDrag)
-  window.removeEventListener('mouseup', stopResize)
+  window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('mouseup', onMouseUp)
+  // Clean up state in case unmounted during drag/resize
+  isDragging.value = false
+  isResizing.value = false
+  document.body.style.userSelect = ''
 })
 
 // Computed
@@ -982,9 +999,8 @@ watch(
                 'user-positioned': userHasMoved,
               }"
               :style="{
-                transform: userHasMoved
-                  ? `translate(${playerPosition.x}px, ${playerPosition.y}px)`
-                  : undefined,
+                top: userHasMoved ? `${playerPosition.y}px` : undefined,
+                left: userHasMoved ? `${playerPosition.x}px` : undefined,
                 width: !isCollapsed ? `${playerSize.width}px` : undefined,
                 height: !isCollapsed ? `${playerSize.height}px` : undefined,
               }"
@@ -1512,6 +1528,15 @@ watch(
   cursor: grabbing;
 }
 
+.global-player-wrapper.is-resizing {
+  cursor: se-resize;
+}
+
+.global-player-wrapper.is-dragging .floating-player-content,
+.global-player-wrapper.is-resizing .floating-player-content {
+  pointer-events: none;
+}
+
 .global-player-wrapper.is-collapsed {
   height: auto !important;
   width: 350px !important;
@@ -1531,6 +1556,8 @@ watch(
 
 .global-player-wrapper.user-positioned {
   position: fixed;
+  top: 0;
+  left: 0;
   bottom: auto !important;
   right: auto !important;
 }
