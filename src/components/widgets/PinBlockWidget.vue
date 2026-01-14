@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { Search, Settings, Link as LinkIcon, Loader, RefreshCw } from 'lucide-vue-next'
+import { marked } from 'marked'
 import type { Widget } from '../../types/widget'
 import { useWidgetView } from '../../composables/useWidgetView'
 import {
@@ -22,6 +23,12 @@ const emit = defineEmits<{
 }>()
 
 const { isCompactView } = useWidgetView()
+
+// Parse markdown snippet for search results
+const parseSnippet = (snippet: string): string => {
+  if (!snippet) return ''
+  return marked.parse(snippet, { async: false, breaks: true }) as string
+}
 
 // State
 const isConfiguring = ref(!props.widget.data?.blockId)
@@ -189,7 +196,7 @@ const refreshBlock = async () => {
             class="search-result-item"
             @click="selectBlock(result)"
           >
-            <div class="result-snippet">{{ result.snippet }}</div>
+            <div class="result-snippet" v-html="parseSnippet(result.snippet)"></div>
           </div>
         </div>
 
@@ -324,8 +331,32 @@ const refreshBlock = async () => {
   font-size: 12px;
   color: var(--text-primary);
   line-height: 1.5;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.result-snippet :deep(p) {
+  margin: 0 0 0.5em 0;
+}
+
+.result-snippet :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.result-snippet :deep(strong) {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.result-snippet :deep(em) {
+  font-style: italic;
+}
+
+.result-snippet :deep(code) {
+  background: var(--bg-tertiary);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.9em;
 }
 
 .empty-state,

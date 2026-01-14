@@ -10,6 +10,7 @@ export const changelog: ChangelogEntry[] = [
       'Improve performance of PomodoroWidget',
       'Reduce padding on most widgets to fit more content',
       'Remove resize icon, it would be visible only when hovering the bottom right corner',
+      'Improved PIN Block Widget search',
     ],
   },
   {
