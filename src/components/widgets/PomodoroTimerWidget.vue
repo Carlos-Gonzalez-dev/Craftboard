@@ -205,14 +205,6 @@ const startTimer = () => {
         completeTimer()
         return
       }
-
-      // Save state every 5 seconds
-      if (startTimestamp.value) {
-        const elapsed = Math.floor((Date.now() - startTimestamp.value) / 1000)
-        if (elapsed % 5 === 0) {
-          saveState()
-        }
-      }
     }
   }, 1000)
 }

@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 
 export const PANES_STORAGE_KEY = 'craftboard-panes'
 export const ACTIVE_PANE_KEY = 'craftboard-active-pane'
@@ -15,8 +15,9 @@ const activePaneId = ref<string>('')
 
 // Initialize watchers and listeners only once
 let initialized = false
-// Flag to prevent saving when syncing from storage events
-let isSyncingFromStorage = false
+// Flags to prevent saving when syncing from storage events
+let isSyncingPanes = false
+const isSyncingActivePane = false
 
 const loadPanes = () => {
   try {
@@ -35,7 +36,8 @@ const loadPanes = () => {
         },
       ]
       activePaneId.value = 'default'
-      savePanes()
+      savePanesOnly()
+      saveActivePaneOnly()
     }
   } catch (e) {
     console.error('Failed to load panes:', e)
@@ -50,18 +52,33 @@ const loadPanes = () => {
   }
 }
 
-const savePanes = () => {
+// Save only panes data (not activePaneId)
+const savePanesOnly = () => {
   try {
     localStorage.setItem(PANES_STORAGE_KEY, JSON.stringify(panes.value))
-    localStorage.setItem(ACTIVE_PANE_KEY, activePaneId.value)
   } catch (e) {
     console.error('Failed to save panes:', e)
   }
 }
 
+// Save only activePaneId (not panes)
+const saveActivePaneOnly = () => {
+  try {
+    localStorage.setItem(ACTIVE_PANE_KEY, activePaneId.value)
+  } catch (e) {
+    console.error('Failed to save active pane:', e)
+  }
+}
+
+// Save both (for explicit saves like creating/deleting panes)
+const savePanes = () => {
+  savePanesOnly()
+  saveActivePaneOnly()
+}
+
 const switchPane = (paneId: string) => {
   activePaneId.value = paneId
-  savePanes()
+  saveActivePaneOnly()
 }
 
 export function usePanes() {
@@ -72,40 +89,37 @@ export function usePanes() {
     // Watch for localStorage changes from other tabs/windows
     if (typeof window !== 'undefined') {
       window.addEventListener('storage', (e) => {
-        if (e.key === PANES_STORAGE_KEY || e.key === ACTIVE_PANE_KEY) {
-          // Set flag to prevent watchers from saving back to localStorage
-          isSyncingFromStorage = true
+        // Handle panes changes from other tabs
+        if (e.key === PANES_STORAGE_KEY && e.newValue) {
+          isSyncingPanes = true
           try {
-            if (e.key === PANES_STORAGE_KEY && e.newValue) {
-              panes.value = JSON.parse(e.newValue)
-            }
-            if (e.key === ACTIVE_PANE_KEY && e.newValue) {
-              activePaneId.value = e.newValue
-            }
+            panes.value = JSON.parse(e.newValue)
           } finally {
             // Reset flag after Vue's reactivity cycle completes
-            setTimeout(() => {
-              isSyncingFromStorage = false
-            }, 0)
+            nextTick(() => {
+              isSyncingPanes = false
+            })
           }
         }
+        // Don't sync activePaneId from other tabs - each tab keeps its own active pane
       })
     }
 
-    // Watch for changes and save (but not when syncing from storage)
+    // Watch for panes changes and save (but not when syncing from storage)
     watch(
       () => panes.value,
       () => {
-        if (!isSyncingFromStorage) {
-          savePanes()
+        if (!isSyncingPanes) {
+          savePanesOnly()
         }
       },
       { deep: true },
     )
 
+    // Watch for activePaneId changes - save locally only
     watch(activePaneId, () => {
-      if (!isSyncingFromStorage) {
-        savePanes()
+      if (!isSyncingActivePane) {
+        saveActivePaneOnly()
       }
     })
   }

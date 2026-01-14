@@ -468,16 +468,6 @@ const handleWidgetsUpdate = (updatedWidgets: Widget[]) => {
   }
 }
 
-// Watch for pane changes to save
-watch(
-  () => panes.value,
-  () => {
-    if (!isUpdating.value) {
-      savePanes()
-    }
-  },
-  { deep: true },
-)
 
 const defaultColors = [
   'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', // Indigo
