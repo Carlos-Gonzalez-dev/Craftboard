@@ -549,6 +549,58 @@ const checkIfPlaylist = () => {
   }
 }
 
+// Current track info
+const currentTrackTitle = ref('')
+const currentTrackIndex = ref(0)
+const playlistLength = ref(0)
+let trackInfoInterval: ReturnType<typeof setInterval> | null = null
+
+const updateTrackInfo = () => {
+  const player = getYouTubePlayer()
+  if (!player || !isPlaylist.value) {
+    currentTrackTitle.value = ''
+    currentTrackIndex.value = 0
+    playlistLength.value = 0
+    return
+  }
+
+  try {
+    // Get video data (title)
+    if (typeof player.getVideoData === 'function') {
+      const videoData = player.getVideoData()
+      currentTrackTitle.value = videoData?.title || ''
+    }
+
+    // Get playlist position
+    if (typeof player.getPlaylistIndex === 'function') {
+      currentTrackIndex.value = player.getPlaylistIndex() + 1 // 1-based for display
+    }
+
+    // Get playlist length
+    if (typeof player.getPlaylist === 'function') {
+      const playlist = player.getPlaylist()
+      playlistLength.value = playlist?.length || 0
+    }
+  } catch (e) {
+    // Player might not be ready yet
+  }
+}
+
+const startTrackInfoPolling = () => {
+  stopTrackInfoPolling()
+  // Update immediately
+  updateTrackInfo()
+  // Then poll every 2 seconds to catch track changes
+  trackInfoInterval = setInterval(updateTrackInfo, 2000)
+}
+
+const stopTrackInfoPolling = () => {
+  if (trackInfoInterval) {
+    clearInterval(trackInfoInterval)
+    trackInfoInterval = null
+  }
+}
+
 // Floating player state
 const isCollapsed = ref(false)
 const isFullscreen = ref(false)
@@ -563,12 +615,13 @@ const stateBeforeFullscreen = ref({
 // Calculate initial player size based on screen width
 const getInitialPlayerSize = () => {
   const maxWidth = Math.min(560, window.innerWidth - 40)
-  const headerHeight = 48 // header
-  const controlsHeight = 48 // media controls bar
+  const headerHeight = 44 // header
+  const controlsHeight = 40 // media controls bar
+  const footerHeight = 36 // track info footer
   const videoHeight = Math.round(maxWidth * 9 / 16)
   return {
     width: maxWidth,
-    height: videoHeight + headerHeight + controlsHeight,
+    height: videoHeight + headerHeight + controlsHeight + footerHeight,
   }
 }
 const playerSize = ref(getInitialPlayerSize())
@@ -925,12 +978,27 @@ watch(
 // Watch for playlist changes to update controls state
 watch(
   selectedPlaylist,
-  () => {
+  (newPlaylist) => {
     checkIfPlaylist()
     isShuffleEnabled.value = false
+
+    if (newPlaylist && isPlaylist.value) {
+      // Start polling after a delay to let the player initialize
+      setTimeout(startTrackInfoPolling, 1500)
+    } else {
+      stopTrackInfoPolling()
+      currentTrackTitle.value = ''
+      currentTrackIndex.value = 0
+      playlistLength.value = 0
+    }
   },
   { immediate: true },
 )
+
+// Cleanup on unmount
+onUnmounted(() => {
+  stopTrackInfoPolling()
+})
 </script>
 
 <template>
@@ -1179,6 +1247,12 @@ watch(
                   :url="selectedPlaylist.properties.url"
                   :key="selectedPlaylist.id"
                 />
+              </div>
+              <div v-if="isPlaylist && !isCollapsed && currentTrackTitle" class="player-footer">
+                <div class="track-title">{{ currentTrackTitle }}</div>
+                <div v-if="playlistLength > 0" class="track-position">
+                  {{ currentTrackIndex }}/{{ playlistLength }}
+                </div>
               </div>
               <div v-if="!isCollapsed" class="resize-handle" @mousedown="startResize" @touchstart="startResize"></div>
             </div>
@@ -1823,6 +1897,34 @@ watch(
   color: var(--btn-primary-bg);
   background: var(--bg-primary);
   border-color: var(--btn-primary-bg);
+}
+
+.player-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.track-title {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.track-position {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
 }
 
 .floating-player-content {
