@@ -1218,8 +1218,8 @@ onUnmounted(() => {
                     class="header-button"
                     :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'"
                   >
-                    <Minimize v-if="isFullscreen" :size="14" />
-                    <Maximize v-else :size="14" />
+                    <Minimize v-if="isFullscreen" :size="18" />
+                    <Maximize v-else :size="18" />
                   </button>
                   <button
                     v-if="!isFullscreen"
@@ -1227,16 +1227,8 @@ onUnmounted(() => {
                     class="header-button"
                     :title="isCollapsed ? 'Expand player' : 'Collapse player'"
                   >
-                    <ChevronUp v-if="isCollapsed" :size="14" />
-                    <ChevronDown v-else :size="14" />
-                  </button>
-                  <button
-                    v-if="!isFullscreen"
-                    @click.stop="navigateToMusic"
-                    class="header-button"
-                    title="Go to Music view"
-                  >
-                    <ExternalLink :size="14" />
+                    <ChevronUp v-if="isCollapsed" :size="18" />
+                    <ChevronDown v-else :size="18" />
                   </button>
                   <button
                     v-if="!isFullscreen"
@@ -1244,7 +1236,7 @@ onUnmounted(() => {
                     class="header-button"
                     title="Close player"
                   >
-                    <X :size="14" />
+                    <X :size="18" />
                   </button>
                 </div>
               </div>
@@ -1903,7 +1895,7 @@ onUnmounted(() => {
 }
 
 .header-button {
-  padding: 4px;
+  padding: 6px;
   background: transparent;
   border: none;
   color: var(--text-secondary);
