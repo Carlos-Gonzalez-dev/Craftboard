@@ -832,11 +832,11 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="error && !isLoading" class="error-message">
+    <div v-else-if="error && !isLoading" class="error-message">
       {{ error }}
     </div>
 
-    <div v-if="!isLoading && !error && savedTags.length === 0" class="empty-state">
+    <div v-else-if="!isLoading && savedTags.length === 0" class="empty-state">
       <Clock :size="48" />
       <p>No tags configured</p>
       <p class="hint">Click "Add Tag" to start tracking tags</p>

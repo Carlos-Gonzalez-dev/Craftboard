@@ -96,7 +96,7 @@ export const useBookmarksApiStore = defineStore('bookmarksApi', () => {
 
     isLoading.value = true
     error.value = null
-    bookmarks.value = []
+    // Don't clear bookmarks here - keep existing data while reloading
 
     try {
       // Check cache first

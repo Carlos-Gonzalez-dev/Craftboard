@@ -118,7 +118,7 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
 
     isLoading.value = true
     error.value = null
-    logs.value = []
+    // Don't clear logs here - keep existing data while reloading
 
     try {
       const apiUrl = getApiUrl()

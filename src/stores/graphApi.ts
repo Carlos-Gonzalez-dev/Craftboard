@@ -70,12 +70,17 @@ export const useGraphApiStore = defineStore('graphApi', () => {
         return count
       }
 
+      // Use temporary variables to accumulate data, keeping existing data visible during reload
+      let newFolders: CraftFolder[] = []
+      let newCollections: GraphCollection[] = []
+      const allDocuments: CraftDocument[] = []
+
       // First, fetch folders to count them
       const foldersResult = await fetchFolders().catch(() => ({ items: [] }))
-      folders.value = foldersResult.items
+      newFolders = foldersResult.items
 
       // Calculate total API calls: 2 (folders + collections) + number of folders
-      totalApiCalls.value = 2 + countFolders(folders.value)
+      totalApiCalls.value = 2 + countFolders(newFolders)
       completedApiCalls.value = 1 // Folders fetched
 
       // Fetch collections
@@ -89,9 +94,8 @@ export const useGraphApiStore = defineStore('graphApi', () => {
           return { items: [] }
         })
 
-      collections.value = collectionsResult.items
+      newCollections = collectionsResult.items
 
-      const allDocuments: CraftDocument[] = []
       const specialLocations: Record<string, 'unsorted' | 'trash' | 'templates' | 'daily_notes'> = {
         unsorted: 'unsorted',
         trash: 'trash',
@@ -123,7 +127,11 @@ export const useGraphApiStore = defineStore('graphApi', () => {
         }
       }
 
-      await Promise.all(folders.value.map((folder) => fetchFolderDocuments(folder)))
+      await Promise.all(newFolders.map((folder) => fetchFolderDocuments(folder)))
+
+      // Update all refs at once after all data is fetched
+      folders.value = newFolders
+      collections.value = newCollections
       documents.value = allDocuments
 
       // Cache the data

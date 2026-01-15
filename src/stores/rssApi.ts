@@ -162,9 +162,7 @@ export const useRSSApiStore = defineStore('rssApi', () => {
         cache.clearCache(collectionId)
       }
 
-      // Reset state for fresh fetch
-      rssItems.value = []
-      rssFeeds.value = {}
+      // Don't clear rssItems/rssFeeds here - keep existing data while reloading
 
       // Fetch collection items
       totalApiCalls.value = 1
