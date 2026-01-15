@@ -5,6 +5,8 @@
 export const featureFlags = {
   /** Open Space buttons in QuickAccessButton (not working yet) */
   openSpaceButtons: false,
+  /** Animated sparkles traveling along grid lines in background */
+  gridSparkles: false,
 } as const
 
 export type FeatureFlag = keyof typeof featureFlags

@@ -41,7 +41,11 @@ import SubheaderButton from './components/SubheaderButton.vue'
 import ActiveTimerBar from './components/ActiveTimerBar.vue'
 import QuickAccessButton from './components/QuickAccessButton.vue'
 import GlobalProgressBar from './components/GlobalProgressBar.vue'
+import GridSparkles from './components/GridSparkles.vue'
 import { getLatestChangelogDate } from './utils/changelog'
+import { isFeatureEnabled } from './config/featureFlags'
+
+const showGridSparkles = isFeatureEnabled('gridSparkles')
 
 const route = useRoute()
 const tasksStore = useTasksStore()
@@ -605,6 +609,9 @@ onUnmounted(() => {
 
 <template>
   <div class="app">
+    <!-- Grid background sparkles -->
+    <GridSparkles v-if="showGridSparkles" />
+
     <!-- Mobile Sidebar Overlay -->
     <div
       v-if="isMobileSidebarOpen"
