@@ -199,6 +199,16 @@ const addClipboardUrl = () => {
 const handlePaste = (e: ClipboardEvent) => {
   if (!isDashboard.value) return
 
+  // Don't intercept paste if focus is on a text input element
+  const activeElement = document.activeElement
+  if (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement?.getAttribute('contenteditable') === 'true'
+  ) {
+    return
+  }
+
   const text = e.clipboardData?.getData('text')
   if (text && isValidUrl(text)) {
     e.preventDefault()

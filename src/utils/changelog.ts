@@ -6,7 +6,10 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: 'unreleased',
-    changes: ['Add global progress bar and do not hide elements while loading'],
+    changes: [
+      'Add global progress bar and do not hide elements while loading',
+      'Pasting a URL on the dashboard is now disabled when the cursor is inside an input or textarea',
+    ],
   },
   {
     date: '2026-01-14',
