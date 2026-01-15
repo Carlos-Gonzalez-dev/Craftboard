@@ -9,6 +9,7 @@ export const changelog: ChangelogEntry[] = [
     changes: [
       'Add global progress bar and do not hide elements while loading',
       'Pasting a URL on the dashboard is now disabled when the cursor is inside an input or textarea',
+      'Bookmarks are now sorted alphabetically',
     ],
   },
   {

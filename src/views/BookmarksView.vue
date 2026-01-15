@@ -139,7 +139,12 @@ const selectedCategoryItems = computed(() => {
     })
   }
 
-  return items
+  // Sort alphabetically by title
+  return items.slice().sort((a, b) => {
+    const titleA = (a.title || '').toLowerCase()
+    const titleB = (b.title || '').toLowerCase()
+    return titleA.localeCompare(titleB)
+  })
 })
 
 // Group items by environment (only when hasEnvField is true)
