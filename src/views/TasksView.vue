@@ -30,14 +30,15 @@ import type { CalendarEvent } from '../utils/icalParser'
 import { useRoute } from 'vue-router'
 import { useTasksStore } from '../stores/tasks'
 import { useTasksApiStore } from '../stores/tasksApi'
+import { useGlobalLoadingStore } from '../stores/globalLoading'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import ViewTabs from '../components/ViewTabs.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
-import ProgressIndicator from '../components/ProgressIndicator.vue'
 
 const route = useRoute()
 const tasksStore = useTasksStore()
 const tasksApiStore = useTasksApiStore()
+const globalLoadingStore = useGlobalLoadingStore()
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
 const setSubheader =
@@ -57,6 +58,19 @@ const isLoadingWeekTasks = computed(() => tasksApiStore.isLoadingWeekTasks)
 const isLoadingCalendar = computed(() => tasksApiStore.isLoadingCalendar)
 const totalApiCalls = computed(() => tasksApiStore.totalApiCalls)
 const completedApiCalls = computed(() => tasksApiStore.completedApiCalls)
+
+// Check if we have any data loaded (to show skeleton only on first load)
+const hasLoadedData = computed(() => {
+  return (
+    inboxTasks.value.length > 0 ||
+    activeTasks.value.length > 0 ||
+    upcomingTasks.value.length > 0 ||
+    dailyNotes.value.size > 0
+  )
+})
+
+// Show skeleton only when loading AND no data exists yet
+const showInitialSkeleton = computed(() => isLoading.value && !hasLoadedData.value)
 
 // UI State
 const errorMessage = ref('')
@@ -899,11 +913,16 @@ const loadTasks = async (forceRefresh = false) => {
     }
   }
 
+  // Register global loading
+  globalLoadingStore.startLoading('tasks-view')
+
   try {
     await tasksApiStore.initializeTasks(calendarUrls, forceRefresh)
   } catch (err) {
     errorMessage.value = err instanceof Error ? err.message : 'Failed to load tasks'
     console.error('Error loading tasks:', err)
+  } finally {
+    globalLoadingStore.stopLoading('tasks-view')
   }
 }
 
@@ -919,27 +938,32 @@ function getCalendarEventsForDate(date: Date): CalendarEvent[] {
 }
 
 const refreshTasks = async () => {
-  // If on Done tab, only refresh logbook and current week
-  if (activeTab.value === 'done') {
-    await Promise.all([
-      tasksApiStore.loadLogbook(true),
-      tasksApiStore.loadWeekTasks(currentWeekStart.value, true),
-    ])
-    return
-  }
-
-  // Otherwise refresh all pending tasks
-  let calendarUrls: string[] = []
-  const savedUrls = localStorage.getItem('calendar-urls')
-  if (savedUrls) {
-    try {
-      calendarUrls = JSON.parse(savedUrls)
-    } catch {
-      // Fallback to old format
+  globalLoadingStore.startLoading('tasks-view')
+  try {
+    // If on Done tab, only refresh logbook and current week
+    if (activeTab.value === 'done') {
+      await Promise.all([
+        tasksApiStore.loadLogbook(true),
+        tasksApiStore.loadWeekTasks(currentWeekStart.value, true),
+      ])
+      return
     }
-  }
 
-  await tasksApiStore.refreshTasks(calendarUrls)
+    // Otherwise refresh all pending tasks
+    let calendarUrls: string[] = []
+    const savedUrls = localStorage.getItem('calendar-urls')
+    if (savedUrls) {
+      try {
+        calendarUrls = JSON.parse(savedUrls)
+      } catch {
+        // Fallback to old format
+      }
+    }
+
+    await tasksApiStore.refreshTasks(calendarUrls)
+  } finally {
+    globalLoadingStore.stopLoading('tasks-view')
+  }
 }
 
 // Open task in Craft
@@ -1017,7 +1041,7 @@ onMounted(() => {
         }),
         h(
           SubheaderButton,
-          { title: 'Refresh tasks', onClick: refreshTasks },
+          { title: 'Refresh tasks', disabled: isLoading.value, onClick: refreshTasks },
           {
             default: () => h(RefreshCw, { size: 16 }),
           },
@@ -1061,7 +1085,7 @@ onActivated(() => {
         }),
         h(
           SubheaderButton,
-          { title: 'Refresh tasks', onClick: refreshTasks },
+          { title: 'Refresh tasks', disabled: isLoading.value, onClick: refreshTasks },
           {
             default: () => h(RefreshCw, { size: 16 }),
           },
@@ -1085,17 +1109,23 @@ onActivated(() => {
     <template v-else>
       <!-- Content -->
       <div class="tasks-content">
-        <!-- Loading State -->
-        <div v-if="isLoading" class="loading-state">
-          <ProgressIndicator
-            :completed="completedApiCalls"
-            :total="totalApiCalls"
-            message="Loading tasks"
-          />
+        <!-- Initial Loading Skeleton (only shown when no data exists yet) -->
+        <div v-if="showInitialSkeleton" class="initial-loading-skeleton">
+          <div class="skeleton-header">
+            <div class="skeleton-line skeleton-title"></div>
+          </div>
+          <div class="skeleton-grid">
+            <div v-for="i in 7" :key="i" class="skeleton-column">
+              <div class="skeleton-day-header"></div>
+              <div class="skeleton-task"></div>
+              <div class="skeleton-task skeleton-short"></div>
+              <div class="skeleton-task"></div>
+            </div>
+          </div>
         </div>
 
-        <template v-else>
-          <div class="tasks-tabs-container">
+        <!-- Main Content -->
+        <div v-else class="tasks-tabs-container">
             <div class="tasks-tab-content">
               <!-- Week View -->
               <div v-if="viewMode === 'week'" class="week-view">
@@ -1506,7 +1536,6 @@ onActivated(() => {
               </div>
             </div>
           </div>
-        </template>
       </div>
     </template>
   </div>
@@ -1591,6 +1620,102 @@ onActivated(() => {
   border-top-color: var(--btn-primary-bg);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+}
+
+/* Initial Loading Skeleton */
+.initial-loading-skeleton {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.skeleton-header {
+  padding: 12px 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.skeleton-line {
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.skeleton-title {
+  width: 200px;
+  height: 32px;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  flex: 1;
+  background: var(--border-primary);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.skeleton-column {
+  background: var(--bg-primary);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-day-header {
+  height: 40px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.skeleton-task {
+  height: 60px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+.skeleton-task.skeleton-short {
+  height: 40px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Mobile: Stack skeleton columns vertically */
+@media (max-width: 1160px) {
+  .skeleton-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @keyframes spin {

@@ -29,8 +29,8 @@ import {
 import { useRoute } from 'vue-router'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
-import ProgressIndicator from '../components/ProgressIndicator.vue'
 import { useMusicApiStore } from '../stores/musicApi'
+import { useGlobalLoadingStore } from '../stores/globalLoading'
 
 const route = useRoute()
 const registerRefresh =
@@ -39,6 +39,7 @@ const setSubheader =
   inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
 const musicApiStore = useMusicApiStore()
+const globalLoadingStore = useGlobalLoadingStore()
 
 // API Configuration
 const apiBaseUrl = ref('')
@@ -56,6 +57,10 @@ const genresData = computed(() => musicApiStore.genres)
 const isLoading = computed(() => musicApiStore.isLoading)
 const totalApiCalls = computed(() => musicApiStore.totalApiCalls)
 const completedApiCalls = computed(() => musicApiStore.completedApiCalls)
+
+// Check if we have data loaded
+const hasLoadedData = computed(() => music.value.length > 0)
+const showInitialSkeleton = computed(() => isLoading.value && !hasLoadedData.value)
 
 // UI State
 const selectedPlaylist = ref<any>(null)
@@ -432,22 +437,31 @@ const initializeMusic = async (forceRefresh = false) => {
   artistCollectionId.value = artistsId
   genreCollectionId.value = genresId
 
+  globalLoadingStore.startLoading('music-view')
   try {
     await musicApiStore.initializeMusic(playlistsId, artistsId, genresId, forceRefresh)
   } catch (error) {
     console.error('Error loading playlists:', error)
     errorMessage.value =
       'Oops! Unable to load playlists. Please check your connection and try again.'
+  } finally {
+    globalLoadingStore.stopLoading('music-view')
   }
 }
 
 const refreshData = async () => {
   if (!musicCollectionId.value || !artistCollectionId.value || !genreCollectionId.value) return
-  await musicApiStore.refreshMusic(
-    musicCollectionId.value,
-    artistCollectionId.value,
-    genreCollectionId.value,
-  )
+
+  globalLoadingStore.startLoading('music-view')
+  try {
+    await musicApiStore.refreshMusic(
+      musicCollectionId.value,
+      artistCollectionId.value,
+      genreCollectionId.value,
+    )
+  } finally {
+    globalLoadingStore.stopLoading('music-view')
+  }
 }
 
 const openCollectionInCraft = () => {
@@ -883,7 +897,7 @@ onMounted(() => {
   }
 
   // Register subheader
-  if (setSubheader && !errorMessage.value && !isLoading.value) {
+  if (setSubheader && !errorMessage.value) {
     setSubheader({
       right: () => [
         h(
@@ -895,7 +909,7 @@ onMounted(() => {
         ),
         h(
           SubheaderButton,
-          { title: 'Refresh music library', onClick: refreshData },
+          { title: 'Refresh music library', disabled: isLoading.value, onClick: refreshData },
           {
             default: () => h(RefreshCw, { size: 16 }),
           },
@@ -912,9 +926,9 @@ onUnmounted(() => {
 })
 
 // Watch for changes to update subheader
-watch([errorMessage, isLoading], () => {
+watch(errorMessage, () => {
   if (setSubheader) {
-    if (errorMessage.value || isLoading.value) {
+    if (errorMessage.value) {
       setSubheader(null)
     } else {
       setSubheader({
@@ -928,7 +942,7 @@ watch([errorMessage, isLoading], () => {
           ),
           h(
             SubheaderButton,
-            { title: 'Refresh music library', onClick: refreshData },
+            { title: 'Refresh music library', disabled: isLoading.value, onClick: refreshData },
             {
               default: () => h(RefreshCw, { size: 16 }),
             },
@@ -943,7 +957,7 @@ watch([errorMessage, isLoading], () => {
 onActivated(() => {
   loadApiUrl()
   // Re-register subheader
-  if (setSubheader && !errorMessage.value && !isLoading.value) {
+  if (setSubheader && !errorMessage.value) {
     setSubheader({
       right: () => [
         h(
@@ -955,7 +969,7 @@ onActivated(() => {
         ),
         h(
           SubheaderButton,
-          { title: 'Refresh music library', onClick: refreshData },
+          { title: 'Refresh music library', disabled: isLoading.value, onClick: refreshData },
           {
             default: () => h(RefreshCw, { size: 16 }),
           },
@@ -1011,14 +1025,31 @@ onUnmounted(() => {
       <router-link to="/settings" class="settings-link">Go to Settings</router-link>
     </div>
 
-    <!-- Loading State -->
-    <div v-else-if="isLoading" class="loading-container">
-      <ProgressIndicator
-        :completed="completedApiCalls"
-        :total="totalApiCalls"
-        message="Loading playlists"
-      />
-    </div>
+    <template v-else-if="showInitialSkeleton">
+      <!-- Initial Loading Skeleton -->
+      <div class="music-content">
+        <div class="playlists-sidebar">
+          <div class="sidebar-content">
+            <div class="skeleton-filters">
+              <div class="skeleton-filter"></div>
+              <div class="skeleton-filter"></div>
+              <div class="skeleton-filter"></div>
+            </div>
+            <div class="skeleton-playlists">
+              <div v-for="i in 6" :key="i" class="skeleton-playlist"></div>
+            </div>
+          </div>
+        </div>
+        <div class="player-section">
+          <div class="player-content">
+            <div class="player-empty">
+              <MusicIcon :size="64" class="empty-icon" />
+              <p class="empty-text">Loading playlists...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
 
     <template v-else>
       <!-- Content Container -->
@@ -1427,15 +1458,53 @@ onUnmounted(() => {
   background: var(--btn-primary-hover);
 }
 
-.loading-container {
-  flex: 1;
+/* Skeleton Loading Styles */
+.skeleton-filters {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 48px;
-  text-align: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.skeleton-filter {
+  height: 60px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+.skeleton-playlists {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-playlist {
+  height: 70px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .loading-spinner {

@@ -15,8 +15,8 @@ import { useRoute, useRouter } from 'vue-router'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import ViewTabs from '../components/ViewTabs.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
-import ProgressIndicator from '../components/ProgressIndicator.vue'
 import { useRSSApiStore, type RSSCollectionItem } from '../stores/rssApi'
+import { useGlobalLoadingStore } from '../stores/globalLoading'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,6 +26,7 @@ const setSubheader =
   inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
 const rssApiStore = useRSSApiStore()
+const globalLoadingStore = useGlobalLoadingStore()
 
 // API Configuration
 const apiBaseUrl = ref('')
@@ -43,6 +44,10 @@ const loadingFeeds = computed(() => rssApiStore.loadingFeeds)
 const isLoading = computed(() => rssApiStore.isLoading)
 const totalApiCalls = computed(() => rssApiStore.totalApiCalls)
 const completedApiCalls = computed(() => rssApiStore.completedApiCalls)
+
+// Check if we have data loaded
+const hasLoadedData = computed(() => rssItems.value.length > 0)
+const showInitialSkeleton = computed(() => isLoading.value && !hasLoadedData.value)
 
 // Grouped RSS items by category
 const groupedItems = computed(() => {
@@ -150,12 +155,23 @@ const initializeRSSData = async (forceRefresh = false) => {
   }
 
   errorMessage.value = ''
-  await rssApiStore.initializeRSS(rssCollectionId.value, forceRefresh)
+  globalLoadingStore.startLoading('rss-view')
+  try {
+    await rssApiStore.initializeRSS(rssCollectionId.value, forceRefresh)
+  } finally {
+    globalLoadingStore.stopLoading('rss-view')
+  }
 }
 
 const refreshFeeds = async () => {
   if (!rssCollectionId.value) return
-  await rssApiStore.refreshRSS(rssCollectionId.value)
+
+  globalLoadingStore.startLoading('rss-view')
+  try {
+    await rssApiStore.refreshRSS(rssCollectionId.value)
+  } finally {
+    globalLoadingStore.stopLoading('rss-view')
+  }
 }
 
 const openCollectionInCraft = () => {
@@ -221,7 +237,7 @@ onMounted(() => {
   }
 
   // Register subheader
-  if (setSubheader && !errorMessage.value && !isLoading.value && groupedItems.value.length > 0) {
+  if (setSubheader && !errorMessage.value && groupedItems.value.length > 0) {
     setSubheader({
       default: () =>
         h(ViewTabs, {
@@ -244,7 +260,7 @@ onMounted(() => {
         ),
         h(
           SubheaderButton,
-          { title: 'Refresh RSS feeds', onClick: refreshFeeds },
+          { title: 'Refresh RSS feeds', disabled: isLoading.value, onClick: refreshFeeds },
           {
             default: () => h(RefreshCw, { size: 16 }),
           },
@@ -264,7 +280,7 @@ onActivated(() => {
   loadApiUrl()
   initializeSelectedCategory()
   // Re-register subheader
-  if (setSubheader && !errorMessage.value && !isLoading.value && groupedItems.value.length > 0) {
+  if (setSubheader && !errorMessage.value && groupedItems.value.length > 0) {
     setSubheader({
       default: () =>
         h(ViewTabs, {
@@ -287,7 +303,7 @@ onActivated(() => {
         ),
         h(
           SubheaderButton,
-          { title: 'Refresh RSS feeds', onClick: refreshFeeds },
+          { title: 'Refresh RSS feeds', disabled: isLoading.value, onClick: refreshFeeds },
           {
             default: () => h(RefreshCw, { size: 16 }),
           },
@@ -298,8 +314,8 @@ onActivated(() => {
 })
 
 // Watch for changes to update subheader
-watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () => {
-  if (setSubheader && !errorMessage.value && !isLoading.value && groupedItems.value.length > 0) {
+watch([categories, selectedCategory, errorMessage, groupedItems], () => {
+  if (setSubheader && !errorMessage.value && groupedItems.value.length > 0) {
     setSubheader({
       default: () =>
         h(ViewTabs, {
@@ -322,7 +338,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
         ),
         h(
           SubheaderButton,
-          { title: 'Refresh RSS feeds', onClick: refreshFeeds },
+          { title: 'Refresh RSS feeds', disabled: isLoading.value, onClick: refreshFeeds },
           {
             default: () => h(RefreshCw, { size: 16 }),
           },
@@ -344,13 +360,15 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
       <router-link to="/settings" class="settings-link">Go to Settings</router-link>
     </div>
 
-    <div v-else-if="isLoading" class="loading-container">
-      <ProgressIndicator
-        :completed="completedApiCalls"
-        :total="totalApiCalls"
-        message="Loading RSS feeds"
-      />
-    </div>
+    <template v-else-if="showInitialSkeleton">
+      <!-- Initial Loading Skeleton -->
+      <div class="loading-container">
+        <div class="skeleton-rss">
+          <Rss :size="48" class="skeleton-icon" />
+          <p>Loading RSS feeds...</p>
+        </div>
+      </div>
+    </template>
 
     <template v-else>
       <div v-if="groupedItems.length === 0" class="rss-content">
@@ -499,9 +517,27 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedItems], () 
 }
 
 .error-icon,
-.empty-icon {
+.empty-icon,
+.skeleton-icon {
   color: var(--text-tertiary);
   opacity: 0.5;
+}
+
+.skeleton-rss {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-tertiary);
+}
+
+.skeleton-icon {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.3; }
 }
 
 .error-container h2,

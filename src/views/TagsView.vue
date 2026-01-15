@@ -5,8 +5,8 @@ import { openCraftLink } from '../utils/craftApi'
 import { createTagHueMap, createGetTagColor } from '../utils/tagColors'
 import SubheaderButton from '../components/SubheaderButton.vue'
 import ViewTabs from '../components/ViewTabs.vue'
-import ProgressIndicator from '../components/ProgressIndicator.vue'
 import { useTagsApiStore, type LogEntry } from '../stores/tagsApi'
+import { useGlobalLoadingStore } from '../stores/globalLoading'
 
 const registerRefresh =
   inject<(routeName: string, refreshFn: () => void | Promise<void>) => void>('registerRefresh')
@@ -14,6 +14,7 @@ const setSubheader =
   inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
 const tagsApiStore = useTagsApiStore()
+const globalLoadingStore = useGlobalLoadingStore()
 
 // UI State
 const searchQuery = ref('')
@@ -30,6 +31,10 @@ const isLoading = computed(() => tagsApiStore.isLoading)
 const error = computed(() => tagsApiStore.error)
 const totalApiCalls = computed(() => tagsApiStore.totalApiCalls)
 const completedApiCalls = computed(() => tagsApiStore.completedApiCalls)
+
+// Check if we have data loaded
+const hasLoadedData = computed(() => logs.value.length > 0)
+const showInitialSkeleton = computed(() => isLoading.value && !hasLoadedData.value)
 
 // View mode with localStorage persistence
 const VIEW_MODE_STORAGE_KEY = 'tags-view-mode'
@@ -252,7 +257,12 @@ const toggleSortOrder = () => {
 
 // Load logs for all saved tags
 const loadLogs = async (forceRefresh = false) => {
-  await tagsApiStore.loadLogs(savedTags.value, forceRefresh)
+  globalLoadingStore.startLoading('tags-view')
+  try {
+    await tagsApiStore.loadLogs(savedTags.value, forceRefresh)
+  } finally {
+    globalLoadingStore.stopLoading('tags-view')
+  }
 }
 
 // Format date for display
@@ -815,12 +825,11 @@ onMounted(() => {
 
 <template>
   <div class="tags-view">
-    <div v-if="isLoading" class="loading-container">
-      <ProgressIndicator
-        :completed="completedApiCalls"
-        :total="totalApiCalls"
-        message="Loading tags..."
-      />
+    <div v-if="showInitialSkeleton" class="loading-container">
+      <div class="skeleton-tags">
+        <Clock :size="48" class="skeleton-icon" />
+        <p>Loading tags...</p>
+      </div>
     </div>
 
     <div v-if="error && !isLoading" class="error-message">
@@ -1103,6 +1112,24 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+.skeleton-tags {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-tertiary);
+}
+
+.skeleton-icon {
+  opacity: 0.5;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.3; }
 }
 
 .empty-state p {

@@ -6,9 +6,9 @@ import * as d3 from 'd3'
 import { useRoute } from 'vue-router'
 import { RefreshCw, Maximize2, Move, Settings, X, Network, PanelRightOpen } from 'lucide-vue-next'
 import SubheaderButton from '../components/SubheaderButton.vue'
-import ProgressIndicator from '../components/ProgressIndicator.vue'
 import GraphNodeModal from '../components/GraphNodeModal.vue'
 import { useGraphApiStore } from '../stores/graphApi'
+import { useGlobalLoadingStore } from '../stores/globalLoading'
 
 const route = useRoute()
 const registerRefresh =
@@ -17,6 +17,7 @@ const setSubheader =
   inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
 const graphApiStore = useGraphApiStore()
+const globalLoadingStore = useGlobalLoadingStore()
 
 // Check if d3 is available
 let d3Available = true
@@ -39,6 +40,10 @@ const userTags = computed(() => graphApiStore.userTags)
 const isLoading = computed(() => graphApiStore.isLoading || graphApiStore.isLoadingTags)
 const totalApiCalls = computed(() => graphApiStore.totalApiCalls)
 const completedApiCalls = computed(() => graphApiStore.completedApiCalls)
+
+// Check if we have data loaded
+const hasLoadedData = computed(() => documents.value.length > 0 || folders.value.length > 0)
+const showInitialSkeleton = computed(() => isLoading.value && !hasLoadedData.value)
 
 // UI State
 const error = ref<string | null>(null)
@@ -443,6 +448,7 @@ const fetchAllData = async (forceRefresh = false) => {
     return
   }
 
+  globalLoadingStore.startLoading('graph-view')
   try {
     // Fetch graph data and tag relations in parallel
     await Promise.all([
@@ -459,18 +465,25 @@ const fetchAllData = async (forceRefresh = false) => {
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to fetch data'
     console.error('Error fetching data:', e)
+  } finally {
+    globalLoadingStore.stopLoading('graph-view')
   }
 }
 
 const refreshData = async () => {
-  // Refresh graph data and tag relations in parallel
-  await Promise.all([graphApiStore.refreshGraph(), graphApiStore.refreshTagRelations()])
-  lastFetchedAt.value = new Date()
+  globalLoadingStore.startLoading('graph-view')
+  try {
+    // Refresh graph data and tag relations in parallel
+    await Promise.all([graphApiStore.refreshGraph(), graphApiStore.refreshTagRelations()])
+    lastFetchedAt.value = new Date()
 
-  // Trigger graph render after refresh
-  await nextTick()
-  if (visualizationType.value === 'force' && d3Available && graphNodes.value.length > 0) {
-    renderGraph()
+    // Trigger graph render after refresh
+    await nextTick()
+    if (visualizationType.value === 'force' && d3Available && graphNodes.value.length > 0) {
+      renderGraph()
+    }
+  } finally {
+    globalLoadingStore.stopLoading('graph-view')
   }
 }
 
@@ -767,6 +780,7 @@ onMounted(() => {
           SubheaderButton,
           {
             title: 'Refresh',
+            disabled: isLoading.value,
             onClick: refreshData,
           },
           {
@@ -830,6 +844,7 @@ onActivated(() => {
           SubheaderButton,
           {
             title: 'Refresh',
+            disabled: isLoading.value,
             onClick: refreshData,
           },
           {
@@ -912,15 +927,15 @@ defineExpose({ centerGraph, fitAll })
 
     <div v-else class="graph-content-wrapper">
       <div class="graph-container">
-        <div v-if="isLoading" class="loading-message">
-          <ProgressIndicator
-            :completed="completedApiCalls"
-            :total="totalApiCalls"
-            message="Loading data"
-          />
+        <!-- Initial Loading Skeleton -->
+        <div v-if="showInitialSkeleton" class="loading-message">
+          <div class="skeleton-graph">
+            <Network :size="48" class="skeleton-icon" />
+            <p>Loading graph data...</p>
+          </div>
         </div>
 
-        <div v-else-if="graphNodes.length === 0" class="empty-message">
+        <div v-else-if="graphNodes.length === 0 && !isLoading" class="empty-message">
           <p>No data to display</p>
           <p class="empty-hint">Check your API URL and filters</p>
         </div>
@@ -1100,6 +1115,24 @@ defineExpose({ centerGraph, fitAll })
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 8px;
+}
+
+.skeleton-graph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-tertiary);
+}
+
+.skeleton-icon {
+  opacity: 0.5;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.3; }
 }
 
 .graph-content-wrapper {

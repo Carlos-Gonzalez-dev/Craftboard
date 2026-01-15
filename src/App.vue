@@ -40,6 +40,7 @@ import ViewTabs from './components/ViewTabs.vue'
 import SubheaderButton from './components/SubheaderButton.vue'
 import ActiveTimerBar from './components/ActiveTimerBar.vue'
 import QuickAccessButton from './components/QuickAccessButton.vue'
+import GlobalProgressBar from './components/GlobalProgressBar.vue'
 import { getLatestChangelogDate } from './utils/changelog'
 
 const route = useRoute()
@@ -722,6 +723,8 @@ onUnmounted(() => {
             </router-link>
           </div>
         </div>
+        <!-- Global Progress Bar -->
+        <GlobalProgressBar />
         <!-- Subheader (below header) -->
         <div
           v-if="subheaderContent || isDashboard"

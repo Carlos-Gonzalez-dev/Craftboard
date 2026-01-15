@@ -15,8 +15,8 @@ import { useRoute, useRouter } from 'vue-router'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import ViewTabs from '../components/ViewTabs.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
-import ProgressIndicator from '../components/ProgressIndicator.vue'
 import { useBookmarksApiStore, type BookmarkItem } from '../stores/bookmarksApi'
+import { useGlobalLoadingStore } from '../stores/globalLoading'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,6 +26,7 @@ const setSubheader =
   inject<(content: { default?: () => any; right?: () => any } | null) => void>('setSubheader')
 
 const bookmarksApiStore = useBookmarksApiStore()
+const globalLoadingStore = useGlobalLoadingStore()
 
 // API Configuration
 const apiBaseUrl = ref('')
@@ -44,6 +45,10 @@ const bookmarks = computed(() => bookmarksApiStore.bookmarks)
 const isLoading = computed(() => bookmarksApiStore.isLoading)
 const totalApiCalls = computed(() => bookmarksApiStore.totalApiCalls)
 const completedApiCalls = computed(() => bookmarksApiStore.completedApiCalls)
+
+// Check if we have data loaded
+const hasLoadedData = computed(() => bookmarks.value.length > 0)
+const showInitialSkeleton = computed(() => isLoading.value && !hasLoadedData.value)
 
 // Grouped bookmarks by category
 const groupedBookmarks = computed(() => {
@@ -224,12 +229,23 @@ const initializeBookmarksData = async (forceRefresh = false) => {
   }
 
   errorMessage.value = ''
-  await bookmarksApiStore.initializeBookmarks(bookmarksCollectionId.value, forceRefresh)
+  globalLoadingStore.startLoading('bookmarks-view')
+  try {
+    await bookmarksApiStore.initializeBookmarks(bookmarksCollectionId.value, forceRefresh)
+  } finally {
+    globalLoadingStore.stopLoading('bookmarks-view')
+  }
 }
 
 const refreshBookmarks = async () => {
   if (!bookmarksCollectionId.value) return
-  await bookmarksApiStore.refreshBookmarks(bookmarksCollectionId.value)
+
+  globalLoadingStore.startLoading('bookmarks-view')
+  try {
+    await bookmarksApiStore.refreshBookmarks(bookmarksCollectionId.value)
+  } finally {
+    globalLoadingStore.stopLoading('bookmarks-view')
+  }
 }
 
 const openCollectionInCraft = () => {
@@ -310,12 +326,7 @@ onMounted(() => {
   }
 
   // Register subheader
-  if (
-    setSubheader &&
-    !errorMessage.value &&
-    !isLoading.value &&
-    groupedBookmarks.value.length > 0
-  ) {
+  if (setSubheader && !errorMessage.value && groupedBookmarks.value.length > 0) {
     setSubheader({
       default: () =>
         h(ViewTabs, {
@@ -340,7 +351,7 @@ onMounted(() => {
         ),
         h(
           SubheaderButton,
-          { title: 'Refresh Bookmarks', onClick: refreshBookmarks },
+          { title: 'Refresh Bookmarks', disabled: isLoading.value, onClick: refreshBookmarks },
           {
             default: () => h(RefreshCw, { size: 16 }),
           },
@@ -360,12 +371,7 @@ onActivated(() => {
   isInitializing.value = false
   loadApiUrl()
   // Re-register subheader
-  if (
-    setSubheader &&
-    !errorMessage.value &&
-    !isLoading.value &&
-    groupedBookmarks.value.length > 0
-  ) {
+  if (setSubheader && !errorMessage.value && groupedBookmarks.value.length > 0) {
     setSubheader({
       default: () =>
         h(ViewTabs, {
@@ -390,7 +396,7 @@ onActivated(() => {
         ),
         h(
           SubheaderButton,
-          { title: 'Refresh Bookmarks', onClick: refreshBookmarks },
+          { title: 'Refresh Bookmarks', disabled: isLoading.value, onClick: refreshBookmarks },
           {
             default: () => h(RefreshCw, { size: 16 }),
           },
@@ -401,13 +407,8 @@ onActivated(() => {
 })
 
 // Watch for changes to update subheader
-watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks], () => {
-  if (
-    setSubheader &&
-    !errorMessage.value &&
-    !isLoading.value &&
-    groupedBookmarks.value.length > 0
-  ) {
+watch([categories, selectedCategory, errorMessage, groupedBookmarks], () => {
+  if (setSubheader && !errorMessage.value && groupedBookmarks.value.length > 0) {
     setSubheader({
       default: () =>
         h(ViewTabs, {
@@ -432,7 +433,7 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
         ),
         h(
           SubheaderButton,
-          { title: 'Refresh Bookmarks', onClick: refreshBookmarks },
+          { title: 'Refresh Bookmarks', disabled: isLoading.value, onClick: refreshBookmarks },
           {
             default: () => h(RefreshCw, { size: 16 }),
           },
@@ -454,13 +455,15 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
       <router-link to="/settings" class="settings-link">Go to Settings</router-link>
     </div>
 
-    <div v-else-if="isLoading" class="loading-container">
-      <ProgressIndicator
-        :completed="completedApiCalls"
-        :total="totalApiCalls"
-        message="Loading bookmarks"
-      />
-    </div>
+    <template v-else-if="showInitialSkeleton">
+      <!-- Initial Loading Skeleton -->
+      <div class="loading-container">
+        <div class="skeleton-bookmarks">
+          <Bookmark :size="48" class="skeleton-icon" />
+          <p>Loading bookmarks...</p>
+        </div>
+      </div>
+    </template>
 
     <template v-else>
       <div v-if="groupedBookmarks.length === 0" class="bookmarks-content">
@@ -703,9 +706,27 @@ watch([categories, selectedCategory, errorMessage, isLoading, groupedBookmarks],
 }
 
 .error-icon,
-.empty-icon {
+.empty-icon,
+.skeleton-icon {
   color: var(--text-tertiary);
   opacity: 0.5;
+}
+
+.skeleton-bookmarks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-tertiary);
+}
+
+.skeleton-icon {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.3; }
 }
 
 .error-container h2,

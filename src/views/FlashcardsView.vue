@@ -28,8 +28,8 @@ import {
 } from '../utils/craftApi'
 import ViewSubheader from '../components/ViewSubheader.vue'
 import SubheaderButton from '../components/SubheaderButton.vue'
-import ProgressIndicator from '../components/ProgressIndicator.vue'
 import { useFlashcardsApiStore } from '../stores/flashcardsApi'
+import { useGlobalLoadingStore } from '../stores/globalLoading'
 
 const route = useRoute()
 const registerRefresh =
@@ -47,6 +47,7 @@ marked.setOptions({
 const SESSION_VERSION = 1
 
 const flashcardsApiStore = useFlashcardsApiStore()
+const globalLoadingStore = useGlobalLoadingStore()
 
 // API Configuration
 const apiBaseUrl = ref('')
@@ -169,10 +170,16 @@ const loadApiUrl = () => {
 
 const refreshFlashcards = async () => {
   if (!decksCollectionId.value || !flashcardsCollectionId.value) return
-  await flashcardsApiStore.refreshFlashcards(decksCollectionId.value, flashcardsCollectionId.value)
-  processDecks(flashcardsApiStore.decks)
-  loadSessions()
-  preloadAllImages()
+
+  globalLoadingStore.startLoading('flashcards-view')
+  try {
+    await flashcardsApiStore.refreshFlashcards(decksCollectionId.value, flashcardsCollectionId.value)
+    processDecks(flashcardsApiStore.decks)
+    loadSessions()
+    preloadAllImages()
+  } finally {
+    globalLoadingStore.stopLoading('flashcards-view')
+  }
 }
 
 const openCollectionInCraft = () => {
@@ -214,6 +221,9 @@ const initializeFlashcards = async (forceRefresh = false) => {
   decksCollectionId.value = decksId
   flashcardsCollectionId.value = flashcardsId
 
+  // Register global loading
+  globalLoadingStore.startLoading('flashcards-view')
+
   try {
     await flashcardsApiStore.initializeFlashcards(decksId, flashcardsId, forceRefresh)
     processDecks(flashcardsApiStore.decks)
@@ -222,6 +232,8 @@ const initializeFlashcards = async (forceRefresh = false) => {
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to load data'
     console.error('Error loading data:', err)
+  } finally {
+    globalLoadingStore.stopLoading('flashcards-view')
   }
 }
 
@@ -700,6 +712,12 @@ const stopTimer = () => {
   }
 }
 
+// Check if we have data loaded (to show skeleton only on first load)
+const hasLoadedData = computed(() => decks.value.length > 0)
+
+// Show skeleton only when loading AND no data exists yet
+const showInitialSkeleton = computed(() => loading.value && !hasLoadedData.value)
+
 // Hide/show navbar when entering/exiting study mode or summary
 watch(currentView, (newView) => {
   if (newView === 'study' || newView === 'summary') {
@@ -734,6 +752,7 @@ onMounted(() => {
           SubheaderButton,
           {
             title: 'Refresh',
+            disabled: loading.value,
             onClick: refreshFlashcards,
           },
           {
@@ -772,6 +791,7 @@ onActivated(() => {
           SubheaderButton,
           {
             title: 'Refresh',
+            disabled: loading.value,
             onClick: refreshFlashcards,
           },
           {
@@ -786,15 +806,6 @@ onActivated(() => {
 
 <template>
   <div class="flashcards-view">
-    <!-- Loading State -->
-    <div v-if="loading" class="loading-state">
-      <ProgressIndicator
-        :completed="completedApiCalls"
-        :total="totalApiCalls"
-        message="Loading flashcards"
-      />
-    </div>
-
     <!-- Error State -->
     <div v-if="error" class="error-container">
       <BookOpen :size="48" class="error-icon" />
@@ -803,9 +814,25 @@ onActivated(() => {
       <router-link to="/settings" class="settings-link">Go to Settings</router-link>
     </div>
 
-    <template v-if="!loading && !error && currentView === 'decks'">
+    <template v-if="!error && currentView === 'decks'">
+      <!-- Initial Loading Skeleton (only shown when no data exists yet) -->
+      <div v-if="showInitialSkeleton" class="decks-view">
+        <div class="card">
+          <div class="skeleton-section-title"></div>
+          <div class="deck-list">
+            <div v-for="i in 3" :key="i" class="skeleton-deck-card">
+              <div class="skeleton-deck-image"></div>
+              <div class="skeleton-deck-info">
+                <div class="skeleton-deck-title"></div>
+                <div class="skeleton-deck-stats"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Deck Selection View -->
-      <div class="decks-view">
+      <div v-else class="decks-view">
         <!-- Deck Selection -->
         <div class="card">
           <h2 class="section-title">
@@ -894,7 +921,7 @@ onActivated(() => {
     </template>
 
     <!-- Study View -->
-    <div v-if="!loading && !error && currentView === 'study'" class="study-view">
+    <div v-if="!error && currentView === 'study'" class="study-view">
       <div class="study-container">
         <!-- Progress Bar -->
         <div class="progress-section">
@@ -999,7 +1026,7 @@ onActivated(() => {
     </div>
 
     <!-- Summary View -->
-    <div v-if="!loading && !error && currentView === 'summary'" class="summary-view">
+    <div v-if="!error && currentView === 'summary'" class="summary-view">
       <!-- Confetti for perfect score -->
       <div v-if="scorePercentage === 100" class="confetti-container">
         <div
@@ -1386,6 +1413,91 @@ onActivated(() => {
   text-align: center;
   padding: 48px;
   color: var(--text-tertiary);
+}
+
+/* Skeleton Loading Styles */
+.skeleton-section-title {
+  width: 200px;
+  height: 32px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.skeleton-deck-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+}
+
+.skeleton-deck-image {
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.skeleton-deck-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-deck-title {
+  width: 60%;
+  height: 20px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.skeleton-deck-stats {
+  width: 40%;
+  height: 14px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .table-container {

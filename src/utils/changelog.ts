@@ -5,6 +5,10 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: 'unreleased',
+    changes: ['Add global progress bar and do not hide elements while loading'],
+  },
+  {
     date: '2026-01-14',
     changes: [
       'Improve performance of PomodoroWidget',
