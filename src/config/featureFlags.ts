@@ -7,6 +7,8 @@ export const featureFlags = {
   openSpaceButtons: false,
   /** Animated sparkles traveling along grid lines in background */
   gridSparkles: false,
+  /** Fetch detailed block creation dates in Tags view (requires extra API calls per document) */
+  detailedTagDates: false,
 } as const
 
 export type FeatureFlag = keyof typeof featureFlags

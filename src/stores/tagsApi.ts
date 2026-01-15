@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getApiUrl } from '../utils/craftApi'
 import { useApiCache } from '../composables/useApiCache'
+import { isFeatureEnabled } from '../config/featureFlags'
 
 export interface LogEntry {
   documentId: string
@@ -54,6 +55,7 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
 
   /**
    * Recursively extract blocks with tags from block tree
+   * @param documentCreatedAt - Fallback date from document when detailed dates are disabled
    */
   const extractBlocksWithTags = (
     block: any,
@@ -61,6 +63,7 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
     documentTitle: string,
     savedTags: string[],
     parentPath: string[] = [],
+    documentCreatedAt?: string,
   ): LogEntry[] => {
     const entries: LogEntry[] = []
     const markdown = block.markdown || ''
@@ -70,14 +73,16 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
     const matchingTags = tags.filter((tag) => savedTags.includes(tag))
 
     if (matchingTags.length > 0) {
+      // Use block metadata if available, otherwise fall back to document date
+      const createdAt = block.metadata?.createdAt || documentCreatedAt || undefined
       entries.push({
         documentId,
         documentTitle,
         blockId: block.id,
         markdown,
-        createdAt: block.metadata?.createdAt || undefined,
+        createdAt,
         lastModifiedAt: block.metadata?.lastModifiedAt || undefined,
-        date: block.metadata?.createdAt,
+        date: createdAt,
         tags: matchingTags,
         clickableLink: undefined,
       })
@@ -91,7 +96,16 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
           : parentPath
 
       for (const child of block.content) {
-        entries.push(...extractBlocksWithTags(child, documentId, documentTitle, savedTags, newPath))
+        entries.push(
+          ...extractBlocksWithTags(
+            child,
+            documentId,
+            documentTitle,
+            savedTags,
+            newPath,
+            documentCreatedAt,
+          ),
+        )
       }
     }
 
@@ -159,43 +173,73 @@ export const useTagsApiStore = defineStore('tagsApi', () => {
         new Map(rawDocuments.map((doc: any) => [doc.documentId, doc])).values(),
       )
 
-      // Step 2: Fetch blocks for each document with metadata
-      totalApiCalls.value = documents.length
-      completedApiCalls.value = 0
-
+      // Step 2: Either fetch detailed block data or use document-level data
+      const fetchDetailedDates = isFeatureEnabled('detailedTagDates')
       const logEntries: LogEntry[] = []
 
-      for (const doc of documents) {
-        try {
-          const blocksResponse = await fetch(
-            `${apiUrl}/blocks?id=${encodeURIComponent(doc.documentId)}&fetchMetadata=true`,
-            {
-              method: 'GET',
-              headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
+      if (fetchDetailedDates) {
+        // Detailed mode: fetch blocks for each document with metadata
+        totalApiCalls.value = documents.length
+        completedApiCalls.value = 0
+
+        for (const doc of documents) {
+          try {
+            const blocksResponse = await fetch(
+              `${apiUrl}/blocks?id=${encodeURIComponent(doc.documentId)}&fetchMetadata=true`,
+              {
+                method: 'GET',
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
               },
-            },
-          )
-
-          completedApiCalls.value++
-
-          if (blocksResponse.ok) {
-            const blockData = await blocksResponse.json()
-            const documentTitle = doc.title || 'Untitled'
-
-            // Extract all blocks with tags from the tree
-            const blockEntries = extractBlocksWithTags(
-              blockData,
-              doc.documentId,
-              documentTitle,
-              tags,
             )
-            logEntries.push(...blockEntries)
+
+            completedApiCalls.value++
+
+            if (blocksResponse.ok) {
+              const blockData = await blocksResponse.json()
+              const documentTitle = doc.title || 'Untitled'
+
+              // Extract all blocks with tags from the tree
+              const blockEntries = extractBlocksWithTags(
+                blockData,
+                doc.documentId,
+                documentTitle,
+                tags,
+              )
+              logEntries.push(...blockEntries)
+            }
+          } catch (blockError) {
+            console.error(`Error fetching blocks for document ${doc.documentId}:`, blockError)
           }
-        } catch (blockError) {
-          console.error(`Error fetching blocks for document ${doc.documentId}:`, blockError)
-          // Continue with other documents even if one fails
+        }
+      } else {
+        // Fast mode: use data directly from search results (no extra API calls)
+        // Each item in rawDocuments is already a match with markdown snippet
+        totalApiCalls.value = 0
+        completedApiCalls.value = 0
+
+        for (const doc of rawDocuments) {
+          const markdown = doc.markdown || ''
+          const createdAt = doc.createdAt || undefined
+
+          // Extract tags from the markdown snippet
+          const foundTags = extractMatchingTags(markdown, '').filter((t) => tags.includes(t))
+
+          if (foundTags.length > 0) {
+            logEntries.push({
+              documentId: doc.documentId,
+              documentTitle: doc.title || 'Untitled',
+              blockId: doc.documentId,
+              markdown,
+              createdAt,
+              lastModifiedAt: doc.lastModifiedAt || undefined,
+              date: createdAt,
+              tags: foundTags,
+              clickableLink: undefined,
+            })
+          }
         }
       }
 
