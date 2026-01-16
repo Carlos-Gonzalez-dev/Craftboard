@@ -1332,6 +1332,7 @@ body.study-mode .navbar {
   flex: 1;
   overflow: auto;
   min-height: 0;
+  background: transparent;
 }
 
 @media (max-width: 768px) {

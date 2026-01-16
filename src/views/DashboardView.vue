@@ -674,6 +674,7 @@ watch(
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: transparent;
 }
 
 .pane-tabs {

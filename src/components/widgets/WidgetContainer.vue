@@ -618,7 +618,9 @@ const { isCompactView } = useWidgetView()
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--widget-bg);
+  /* background: color-mix(in srgb, var(--widget-bg) 20%, transparent); */
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
   border-radius: 12px;
   border: 1px solid var(--border-primary);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
@@ -772,7 +774,7 @@ const { isCompactView } = useWidgetView()
   flex: 1;
   overflow: auto;
   padding: 10px 6px;
-  background: var(--widget-bg);
+  background: transparent;
   border-radius: 0 0 8px 8px;
   color: var(--text-primary);
   position: relative;

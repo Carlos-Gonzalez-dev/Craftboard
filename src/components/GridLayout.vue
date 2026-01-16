@@ -163,6 +163,7 @@ const { isCompactView } = useWidgetView()
 .grid-container {
   min-height: 100%;
   height: 100%;
+  background: transparent;
 }
 
 .desktop-grid {
