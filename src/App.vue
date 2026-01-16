@@ -783,16 +783,18 @@ onUnmounted(() => {
                 <button
                   @click="isCompactView = false"
                   :class="['view-mode-button', { active: !isCompactView }]"
-                  title="Expanded View"
+                  title="Expanded View (V)"
                 >
+                  <span v-if="keyboardShortcutsEnabled" class="view-mode-shortcut">V</span>
                   <Maximize2 :size="14" />
                   <span>Expanded</span>
                 </button>
                 <button
                   @click="isCompactView = true"
                   :class="['view-mode-button', { active: isCompactView }]"
-                  title="Compact View"
+                  title="Compact View (V)"
                 >
+                  <span v-if="keyboardShortcutsEnabled" class="view-mode-shortcut">V</span>
                   <Minimize2 :size="14" />
                   <span>Compact</span>
                 </button>
@@ -1382,6 +1384,18 @@ body.study-mode .navbar {
 
 .view-mode-button.active:hover {
   background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+}
+
+.view-mode-shortcut {
+  font-size: 9px;
+  opacity: 0.5;
+  font-weight: 600;
+  min-width: 12px;
+  text-align: center;
+}
+
+.view-mode-button.active .view-mode-shortcut {
+  opacity: 0.7;
 }
 
 @media (max-width: 768px) {
@@ -2501,6 +2515,15 @@ body.study-mode .navbar {
 
 .pane-tabs-header .view-mode-button.active:hover {
   background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+}
+
+.pane-tabs-header .view-mode-shortcut {
+  font-size: 8px;
+  opacity: 0.4;
+}
+
+.pane-tabs-header .view-mode-button.active .view-mode-shortcut {
+  opacity: 0.7;
 }
 
 /* Mobile styles for pane tabs header */

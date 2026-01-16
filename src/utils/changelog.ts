@@ -9,6 +9,7 @@ export const changelog: ChangelogEntry[] = [
     changes: [
       'Bookomarks now supports custom comments. They can be searched by comments and you can see the actual comment clicking on the new comment icon',
       'Improved keyboar shortcuts',
+      'Added shortcut to toggle dashboard compact / expand mode (v)',
     ],
   },
   {

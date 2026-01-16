@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePanes } from './usePanes'
+import { useWidgetView } from './useWidgetView'
 
 // Letras para panes (hasta 10 panes)
 export const PANE_KEYS = ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P']
@@ -17,6 +18,7 @@ export function useKeyboardShortcuts(options: {
 }) {
   const router = useRouter()
   const { panes, switchPane } = usePanes()
+  const { toggleViewMode } = useWidgetView()
 
   const isInputFocused = (): boolean => {
     const el = document.activeElement
@@ -55,6 +57,13 @@ export function useKeyboardShortcuts(options: {
       if (paneIndex !== -1 && pane) {
         e.preventDefault()
         switchPane(pane.id)
+        return
+      }
+
+      // V para toggle expanded/compact view
+      if (key === 'V') {
+        e.preventDefault()
+        toggleViewMode()
         return
       }
     }
