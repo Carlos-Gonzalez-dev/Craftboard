@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onActivated, onUnmounted, watch, inject, h } from 'vue'
-import { Bookmark, ExternalLink, Search, X, RefreshCw, Folder } from 'lucide-vue-next'
+import { Bookmark, ExternalLink, Search, X, RefreshCw, Folder, MessageSquare } from 'lucide-vue-next'
 import {
   getApiUrl,
   getCraftLinkPreference,
@@ -39,6 +39,14 @@ const selectedCategory = ref<string | null>(null)
 const searchQuery = ref('')
 const selectedTags = ref<Set<string>>(new Set())
 const selectedEnv = ref<'dev' | 'staging' | 'prod' | null>(null)
+const expandedCommentId = ref<string | null>(null)
+
+// Toggle comment visibility
+const toggleComment = (bookmarkId: string, event: Event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  expandedCommentId.value = expandedCommentId.value === bookmarkId ? null : bookmarkId
+}
 
 // Store computed properties
 const bookmarks = computed(() => bookmarksApiStore.bookmarks)
@@ -127,7 +135,13 @@ const selectedCategoryItems = computed(() => {
       const title = (item.title || '').toLowerCase()
       const url = item.url.toLowerCase()
       const domain = getDomain(item.url).toLowerCase()
-      return title.includes(query) || url.includes(query) || domain.includes(query)
+      const comment = (item.comment || '').toLowerCase()
+      return (
+        title.includes(query) ||
+        url.includes(query) ||
+        domain.includes(query) ||
+        comment.includes(query)
+      )
     })
   }
 
@@ -616,7 +630,22 @@ watch([categories, selectedCategory, errorMessage, groupedBookmarks], () => {
                               >{{ tag }}</span
                             >
                           </div>
+                          <div
+                            v-if="expandedCommentId === bookmark.id && bookmark.comment"
+                            class="bookmark-comment"
+                          >
+                            {{ bookmark.comment }}
+                          </div>
                         </div>
+                        <button
+                          v-if="bookmark.comment"
+                          class="comment-button"
+                          :class="{ active: expandedCommentId === bookmark.id }"
+                          @click="toggleComment(bookmark.id, $event)"
+                          title="View comment"
+                        >
+                          <MessageSquare :size="14" />
+                        </button>
                         <ExternalLink :size="16" class="bookmark-external-icon" />
                       </a>
                     </div>
@@ -664,7 +693,22 @@ watch([categories, selectedCategory, errorMessage, groupedBookmarks], () => {
                         >{{ tag }}</span
                       >
                     </div>
+                    <div
+                      v-if="expandedCommentId === bookmark.id && bookmark.comment"
+                      class="bookmark-comment"
+                    >
+                      {{ bookmark.comment }}
+                    </div>
                   </div>
+                  <button
+                    v-if="bookmark.comment"
+                    class="comment-button"
+                    :class="{ active: expandedCommentId === bookmark.id }"
+                    @click="toggleComment(bookmark.id, $event)"
+                    title="View comment"
+                  >
+                    <MessageSquare :size="14" />
+                  </button>
                   <ExternalLink :size="16" class="bookmark-external-icon" />
                 </a>
               </div>
@@ -1185,6 +1229,52 @@ watch([categories, selectedCategory, errorMessage, groupedBookmarks], () => {
 
 .bookmark-card:hover .bookmark-external-icon {
   opacity: 1;
+}
+
+.comment-button {
+  position: absolute;
+  top: 8px;
+  right: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.bookmark-card:hover .comment-button {
+  opacity: 1;
+}
+
+.comment-button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.comment-button.active {
+  opacity: 1;
+  color: var(--btn-primary-bg);
+  background: var(--bg-tertiary);
+}
+
+.bookmark-comment {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .env-groups-container {
