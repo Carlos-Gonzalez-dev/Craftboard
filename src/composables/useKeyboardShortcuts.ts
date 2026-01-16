@@ -35,6 +35,9 @@ export function useKeyboardShortcuts(options: {
 
     // Números 1-9 para navegación del menú
     if (/^[1-9]$/.test(e.key)) {
+      // No interferir con shortcuts del navegador (cmd+1, ctrl+1, etc.)
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+
       const index = parseInt(e.key) - 1
       const items = options.navigationItems()
       const item = items[index]
