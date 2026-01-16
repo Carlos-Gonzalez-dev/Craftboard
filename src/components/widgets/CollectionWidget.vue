@@ -966,7 +966,6 @@ const isEmail = (value: string): boolean => {
   overflow: auto;
   border: 1px solid var(--border-primary);
   border-radius: 6px;
-  background: var(--bg-tertiary);
   display: flex;
   flex-direction: column;
 }
@@ -1051,13 +1050,8 @@ const isEmail = (value: string): boolean => {
 
 .collection-table td {
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border-secondary);
   font-weight: 500;
   color: var(--text-secondary);
-}
-
-.collection-table tr:last-child td {
-  border-bottom: none;
 }
 
 .collection-table tbody tr:hover {
@@ -1525,10 +1519,6 @@ const isEmail = (value: string): boolean => {
 .collection-gallery-wrapper {
   flex: 1;
   overflow: auto;
-  padding: 8px;
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  background: var(--bg-tertiary);
 }
 
 .gallery-grid {
