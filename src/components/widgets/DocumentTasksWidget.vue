@@ -849,7 +849,6 @@ watch(
   overflow-x: auto;
   border: 1px solid var(--border-primary);
   border-radius: 6px;
-  background: var(--bg-tertiary);
 }
 
 .tasks-table {
@@ -876,7 +875,6 @@ watch(
 }
 
 .tasks-table tbody tr {
-  border-bottom: 1px solid var(--border-secondary);
   transition: background 0.15s ease;
 }
 
