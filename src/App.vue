@@ -33,6 +33,10 @@ import { useWidgetView } from './composables/useWidgetView'
 import { usePanes } from './composables/usePanes'
 import { useActiveTimers } from './composables/useActiveTimers'
 import { useBadgeAndTitle } from './composables/useBadgeAndTitle'
+import {
+  useKeyboardShortcuts,
+  keyboardShortcutsEnabled,
+} from './composables/useKeyboardShortcuts'
 import { useTasksStore } from './stores/tasks'
 import ViewSubheader from './components/ViewSubheader.vue'
 import PaneTabs from './components/PaneTabs.vue'
@@ -300,6 +304,14 @@ const navigationItems = computed(() => {
     { path: '/tags', name: 'Tags', icon: Clock, show: showTagsTab.value, badge: null },
   ]
   return items.filter((item) => item.show)
+})
+
+// Keyboard shortcuts
+const quickAccessRef = ref<InstanceType<typeof QuickAccessButton> | null>(null)
+useKeyboardShortcuts({
+  navigationItems: () => navigationItems.value,
+  onToggleQuickAccess: () => quickAccessRef.value?.toggle(),
+  isDashboard: () => isDashboard.value,
 })
 
 // Mobile sidebar state
@@ -710,11 +722,12 @@ onUnmounted(() => {
           <!-- Desktop Navigation -->
           <div class="nav-links desktop-nav">
             <router-link
-              v-for="item in navigationItems"
+              v-for="(item, index) in navigationItems"
               :key="item.path"
               :to="item.path"
               class="nav-link"
             >
+              <span v-if="keyboardShortcutsEnabled" class="nav-shortcut">{{ index + 1 }}</span>
               <component :is="item.icon" :size="16" />
               <span>{{ item.name }}</span>
               <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
@@ -909,7 +922,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Quick Access Floating Button -->
-    <QuickAccessButton />
+    <QuickAccessButton ref="quickAccessRef" />
   </div>
 </template>
 
@@ -1298,6 +1311,19 @@ body.study-mode .navbar {
 .nav-link.router-link-exact-active .nav-badge {
   background: rgba(255, 255, 255, 0.3);
   color: white;
+}
+
+.nav-shortcut {
+  font-size: 9px;
+  opacity: 0.5;
+  font-weight: 600;
+  min-width: 10px;
+  text-align: center;
+}
+
+.nav-link.router-link-active .nav-shortcut,
+.nav-link.router-link-exact-active .nav-shortcut {
+  opacity: 0.7;
 }
 
 .content {

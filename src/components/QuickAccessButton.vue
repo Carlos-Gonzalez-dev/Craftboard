@@ -164,6 +164,11 @@ const openSpace = async (tab: 'calendar' | 'search' | 'documents') => {
   window.location.href = `craftdocs://openspace?spaceId=${spaceId}&tab=${tab}`
   closeMenu()
 }
+
+// Expose toggle for keyboard shortcuts
+defineExpose({
+  toggle: toggleMenu,
+})
 </script>
 
 <template>

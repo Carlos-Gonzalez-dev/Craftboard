@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { X, Check, Plus, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { usePanes } from '../composables/usePanes'
+import { PANE_KEYS, keyboardShortcutsEnabled } from '../composables/useKeyboardShortcuts'
 
 const { panes, activePaneId, switchPane, savePanes } = usePanes()
 
@@ -170,7 +171,7 @@ const handleDragEnd = () => {
     </button>
     <div ref="paneTabsContainer" class="pane-tabs-container">
       <div
-        v-for="pane in panes"
+        v-for="(pane, index) in panes"
         :key="pane.id"
         :class="[
           'pane-tab-wrapper',
@@ -194,6 +195,9 @@ const handleDragEnd = () => {
           :class="['pane-tab', { active: pane.id === activePaneId }]"
           title="Double-click to rename"
         >
+          <span v-if="keyboardShortcutsEnabled && index < PANE_KEYS.length" class="pane-shortcut">
+            {{ PANE_KEYS[index] }}
+          </span>
           <span class="pane-name">{{ pane.name }}</span>
           <div class="pane-actions">
             <button
@@ -375,6 +379,19 @@ const handleDragEnd = () => {
 
 .pane-tab.active:hover {
   background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+}
+
+.pane-shortcut {
+  font-size: 8px;
+  opacity: 0.4;
+  font-weight: 700;
+  text-transform: uppercase;
+  min-width: 10px;
+  text-align: center;
+}
+
+.pane-tab.active .pane-shortcut {
+  opacity: 0.7;
 }
 
 .pane-name {
