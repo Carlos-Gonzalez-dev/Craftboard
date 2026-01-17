@@ -59,6 +59,8 @@ const showTasksTab = ref(true)
 const showTagsTab = ref(true)
 const cacheExpiryMinutes = ref(60)
 const calendarUrls = ref<string[]>([''])
+// RSS Proxy URLs management
+const rssProxyUrls = ref<string[]>(['https://api.allorigins.win/get?url={url}'])
 const storageSize = ref(0)
 const collections = ref<Collection[]>([])
 const isLoadingCollections = ref(false)
@@ -343,10 +345,18 @@ watch(isSaving, () => {
 function addCalendarUrl() {
   calendarUrls.value.push('')
 }
-
 function removeCalendarUrl(index: number) {
   if (calendarUrls.value.length > 1) {
     calendarUrls.value.splice(index, 1)
+  }
+}
+// RSS Proxy URL management
+function addRssProxyUrl() {
+  rssProxyUrls.value.push('')
+}
+function removeRssProxyUrl(index: number) {
+  if (rssProxyUrls.value.length > 1) {
+    rssProxyUrls.value.splice(index, 1)
   }
 }
 
@@ -398,6 +408,9 @@ const saveSettings = async (skipAutodiscovery = false) => {
     // Save calendar URLs (filter out empty strings)
     const validUrls = calendarUrls.value.filter((url) => url.trim() !== '')
     localStorage.setItem('calendar-urls', JSON.stringify(validUrls))
+    // Save RSS proxy URLs (filter out empty strings)
+    const validProxies = rssProxyUrls.value.filter((url) => url.trim() !== '')
+    localStorage.setItem('rss-proxy-urls', JSON.stringify(validProxies))
     setCacheExpiryMinutes(cacheExpiryMinutes.value)
 
     // Track if spaceId was previously configured
@@ -422,8 +435,8 @@ const saveSettings = async (skipAutodiscovery = false) => {
     // Auto-trigger autodiscovery only if space ID was not previously configured
     // This ensures it only runs the first time, not on every save
     if (apiUrl.value && !skipAutodiscovery && !hadSpaceId) {
-      const hasAllIds = requiredCollections.value.every(
-        (col) => collectionIds.value[col.key]?.trim(),
+      const hasAllIds = requiredCollections.value.every((col) =>
+        collectionIds.value[col.key]?.trim(),
       )
       if (!hasAllIds) {
         try {
@@ -480,7 +493,6 @@ const savedCalendarUrls = localStorage.getItem('calendar-urls')
 if (savedCalendarUrls) {
   try {
     calendarUrls.value = JSON.parse(savedCalendarUrls)
-    // Ensure at least one empty field for adding new URLs
     if (calendarUrls.value.length === 0) {
       calendarUrls.value = ['']
     }
@@ -490,6 +502,21 @@ if (savedCalendarUrls) {
 } else {
   calendarUrls.value = ['']
 }
+// Load RSS proxy URLs
+const savedRssProxyUrls = localStorage.getItem('rss-proxy-urls')
+if (savedRssProxyUrls) {
+  try {
+    rssProxyUrls.value = JSON.parse(savedRssProxyUrls)
+    if (rssProxyUrls.value.length === 0) {
+      rssProxyUrls.value = ['']
+    }
+  } catch {
+    rssProxyUrls.value = ['https://api.allorigins.win/get?url={url}']
+  }
+} else {
+  rssProxyUrls.value = ['https://api.allorigins.win/get?url={url}']
+}
+
 cacheExpiryMinutes.value = getCacheExpiryMinutes()
 
 // Export/Import functions
@@ -579,8 +606,8 @@ function importDataFromFile(event: Event) {
                 <span>Auto-detect URLs from clipboard</span>
               </label>
               <p class="field-hint">
-                When enabled, the dashboard will automatically detect URLs in your clipboard and show
-                a quick "Pin URL" button. This requires clipboard read permission.
+                When enabled, the dashboard will automatically detect URLs in your clipboard and
+                show a quick "Pin URL" button. This requires clipboard read permission.
                 <span v-if="clipboardPermissionState === 'granted'" class="permission-granted">
                   (Permission granted)
                 </span>
@@ -740,6 +767,42 @@ function importDataFromFile(event: Event) {
                 Optional: iCal URLs to fetch calendar events and display them in the task week view.
                 Supports Google Calendar, Outlook, Apple Calendar, and other iCal-compatible
                 services. You can add multiple calendars.
+              </p>
+            </div>
+
+            <div class="form-group">
+              <label>RSS Proxy URLs</label>
+              <div v-for="(proxy, index) in rssProxyUrls" :key="index" class="calendar-url-row">
+                <input
+                  :id="`rss-proxy-url-${index}`"
+                  v-model="rssProxyUrls[index]"
+                  type="text"
+                  placeholder="https://api.allorigins.win/get?url={url}"
+                  class="input"
+                />
+                <button
+                  v-if="rssProxyUrls.length > 1"
+                  @click="removeRssProxyUrl(index)"
+                  class="remove-calendar-button"
+                  type="button"
+                  title="Remove proxy"
+                >
+                  <X :size="16" />
+                </button>
+              </div>
+              <button
+                @click="addRssProxyUrl"
+                class="add-calendar-button"
+                type="button"
+                title="Add another proxy"
+              >
+                <Plus :size="16" />
+                <span>Add Proxy</span>
+              </button>
+              <p class="field-hint">
+                List of proxy URLs to use for fetching RSS feeds. Use <code>{url}</code> as a
+                placeholder for the RSS feed URL. You can add multiple proxies for fallback.<br />
+                Example: <code>https://api.allorigins.win/get?url={url}</code>
               </p>
             </div>
           </div>

@@ -60,7 +60,7 @@ export const parseRSS = (xmlText: string): RSSFeed | null => {
           // If no title but we have description, use first line of description as title
           if (!itemTitle && itemDescription) {
             // Use first line of description as title, limit to 100 chars
-            itemTitle = itemDescription.split('\n')[0].substring(0, 100).trim()
+            itemTitle = (itemDescription?.split('\n')[0] ?? '').substring(0, 100).trim()
           }
           // If still no title, use the link domain or a default
           if (!itemTitle) {
@@ -135,7 +135,7 @@ export const parseRSS = (xmlText: string): RSSFeed | null => {
           // If no title but we have description/content, use that as title
           if (!itemTitle && itemDescription) {
             // Use first line of description as title
-            itemTitle = itemDescription.split('\n')[0].substring(0, 100).trim()
+            itemTitle = (itemDescription?.split('\n')[0] ?? '').substring(0, 100).trim()
           }
           // If still no title, use the link domain or a default
           if (!itemTitle) {
@@ -204,107 +204,69 @@ const fetchWithTimeout = async (
 
 // Fetch RSS feed via CORS proxy with fallback options
 export const fetchRSSFeed = async (url: string): Promise<RSSFeed | null> => {
-  const encodedUrl = encodeURIComponent(url)
-
-  // Only use local backend proxy if explicitly configured (not localhost in production)
-  const localProxyUrl = import.meta.env.VITE_RSS_PROXY_URL
-  const isLocalhostProxy = localProxyUrl && localProxyUrl.includes('localhost')
-  const isProduction =
-    import.meta.env.PROD ||
-    (!import.meta.env.DEV &&
-      window.location.hostname !== 'localhost' &&
-      window.location.hostname !== '127.0.0.1')
-
-  // Try multiple proxy services as fallback
-  const proxyOptions = []
-
-  // Only include local backend proxy if:
-  // 1. It's explicitly configured via env var, AND
-  // 2. It's not localhost in production
-  if (localProxyUrl && (!isLocalhostProxy || !isProduction)) {
-    proxyOptions.push({
-      name: 'Local Backend',
-      url: `${localProxyUrl}?url=${encodedUrl}`,
-      parseResponse: async (response: Response) => {
-        return await response.text()
-      },
-    })
+  // Get user-defined proxies from localStorage
+  let proxyTemplates: string[] = []
+  try {
+    const stored = localStorage.getItem('rss-proxy-urls')
+    if (stored) {
+      proxyTemplates = JSON.parse(stored)
+    }
+  } catch {
+    proxyTemplates = []
+  }
+  if (!Array.isArray(proxyTemplates) || proxyTemplates.length === 0) {
+    // Default fallback if none configured
+    proxyTemplates = ['https://api.allorigins.win/get?url={url}']
   }
 
-  // Add public proxy options
-  proxyOptions.push(
-    // Option 1: AllOrigins (original)
-    {
-      name: 'AllOrigins',
-      url: `https://api.allorigins.win/get?url=${encodedUrl}`,
-      parseResponse: async (response: Response) => {
+  for (const template of proxyTemplates) {
+    // Replace {url} placeholder with encoded URL
+    const proxyUrl = template.replace('{url}', encodeURIComponent(url))
+    let parseResponse: (response: Response) => Promise<string>
+    // Heuristic: if the URL contains 'allorigins' and '/get?', expect JSON, else text
+    if (/allorigins\.win\/get\?/.test(proxyUrl)) {
+      parseResponse = async (response: Response) => {
         const data = await response.json()
         return data.contents
-      },
-    },
-    // Option 2: AllOrigins raw (alternative endpoint)
-    {
-      name: 'AllOrigins Raw',
-      url: `https://api.allorigins.win/raw?url=${encodedUrl}`,
-      parseResponse: async (response: Response) => {
-        return await response.text()
-      },
-    },
-    // Option 3: CORS Proxy
-    {
-      name: 'CORS Proxy',
-      url: `https://corsproxy.io/?${encodedUrl}`,
-      parseResponse: async (response: Response) => {
-        return await response.text()
-      },
-    },
-  )
+      }
+    } else {
+      parseResponse = async (response: Response) => await response.text()
+    }
 
-  for (const proxy of proxyOptions) {
     try {
-      const response = await fetchWithTimeout(proxy.url, {}, 15000)
-
+      const response = await fetchWithTimeout(proxyUrl, {}, 15000)
       if (!response.ok) {
-        console.warn(`${proxy.name} returned status ${response.status}, trying next...`)
+        console.warn(`${proxyUrl} returned status ${response.status}, trying next...`)
         continue
       }
-
-      const xmlText = await proxy.parseResponse(response)
-
+      const xmlText = await parseResponse(response)
       if (!xmlText || !xmlText.trim()) {
-        console.warn(`${proxy.name} returned empty content, trying next...`)
+        console.warn(`${proxyUrl} returned empty content, trying next...`)
         continue
       }
-
-      // Check if it looks like XML
       if (!xmlText.trim().startsWith('<')) {
-        console.warn(`${proxy.name} returned non-XML content, trying next...`)
+        console.warn(`${proxyUrl} returned non-XML content, trying next...`)
         continue
       }
-
       const parsed = parseRSS(xmlText)
       if (parsed) {
         if (parsed.items.length > 0) {
           return parsed
         } else {
           console.warn(
-            `${proxy.name} parsed successfully but found 0 items. Feed title: "${parsed.title}". Checking XML structure...`,
+            `${proxyUrl} parsed successfully but found 0 items. Feed title: "${parsed.title}". Checking XML structure...`,
           )
-          // Log a sample of the XML to help debug
-          const sample = xmlText.substring(0, 1000)
-          // Still return the feed even with 0 items - let the UI handle it
           return parsed
         }
       } else {
-        console.warn(`${proxy.name} failed to parse XML. Sample:`, xmlText.substring(0, 500))
+        console.warn(`${proxyUrl} failed to parse XML. Sample:`, xmlText.substring(0, 500))
         continue
       }
     } catch (error) {
-      console.warn(`${proxy.name} error:`, error instanceof Error ? error.message : String(error))
+      console.warn(`${proxyUrl} error:`, error instanceof Error ? error.message : String(error))
       continue
     }
   }
-
   console.error('❌ All proxy options failed for:', url)
   return null
 }
