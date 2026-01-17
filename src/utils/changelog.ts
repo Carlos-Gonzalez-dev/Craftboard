@@ -5,6 +5,10 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: '2026-01-17',
+    changes: ['Added support for a custom proxy server for RSS feeds'],
+  },
+  {
     date: '2026-01-16v2',
     changes: [
       'Bookomarks now supports custom comments. They can be searched by comments and you can see the actual comment clicking on the new comment icon',
