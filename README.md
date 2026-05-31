@@ -8,6 +8,7 @@
 </div>
 
 > **Note:** This project is an abandoned experiment and is no longer actively maintained.
+> The canonical repository has moved to **[Codeberg](https://codeberg.org/CarlosGonzalez/Craftboard)** — issues and contributions should go there.
 
 ## About
 
