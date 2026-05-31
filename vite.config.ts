@@ -20,7 +20,7 @@ const appVersion = dateMatch ? dateMatch[1] : '2025-12-25'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/', // Change this to '/subdirectory/' if serving from a subdirectory
+  base: '/craftboard/',
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },

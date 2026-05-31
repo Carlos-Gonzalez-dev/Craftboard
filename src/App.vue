@@ -682,6 +682,7 @@ onUnmounted(() => {
         </router-link>
         <!-- App Footer in Sidebar -->
         <div class="mobile-app-footer">
+          <div class="mobile-footer-disclaimer">Abandoned experiment — no longer maintained.</div>
           <div class="mobile-footer-left">
             <img src="/favicon.svg" alt="Craftboard" class="mobile-footer-icon" />
             <span>{{ dashboardTitle }}</span>
@@ -697,9 +698,9 @@ onUnmounted(() => {
           </div>
           <div class="mobile-footer-right">
             <span class="mobile-footer-about">Carlos González, 2025 - 2026</span>
-            <span class="mobile-footer-contact">craftboard@dende.gal</span>
+            <span class="mobile-footer-contact">craftboard@carlosg.eu</span>
             <a
-              href="https://espazo.dende.gal/craftboard-documentation"
+              href="https://carlosg.craft.me/craftboard-documentation"
               target="_blank"
               rel="noopener noreferrer"
               class="mobile-footer-help"
@@ -838,6 +839,7 @@ onUnmounted(() => {
     </main>
 
     <footer class="app-footer">
+      <div class="footer-disclaimer">Abandoned experiment — no longer maintained.</div>
       <div class="footer-left">
         <img src="/favicon.svg" alt="Craftboard" class="footer-icon" />
         <span>{{ dashboardTitle }}</span>
@@ -853,9 +855,9 @@ onUnmounted(() => {
       </div>
       <div class="footer-right">
         <span class="footer-about">Carlos González, 2025 - 2026</span>
-        <span class="footer-contact">craftboard@dende.gal</span>
+        <span class="footer-contact">craftboard@carlosg.eu</span>
         <a
-          href="https://espazo.dende.gal/craftboard-documentation"
+          href="https://carlosg.craft.me/craftboard-documentation"
           target="_blank"
           rel="noopener noreferrer"
           class="footer-help"
@@ -1066,6 +1068,16 @@ body.study-mode .navbar {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
+}
+
+.footer-disclaimer {
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  opacity: 0.6;
+  padding-bottom: 4px;
 }
 
 .global-music-player {
@@ -1714,6 +1726,14 @@ body.study-mode .navbar {
   width: 100%;
   justify-content: flex-start;
   min-width: auto;
+}
+
+.mobile-footer-disclaimer {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  opacity: 0.6;
+  margin-bottom: 4px;
 }
 
 .mobile-app-footer {

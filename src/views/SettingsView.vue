@@ -875,7 +875,7 @@ function importDataFromFile(event: Event) {
               <p class="field-hint" style="margin-bottom: 12px">
                 <strong>Getting started:</strong> Copy the
                 <a
-                  href="https://espazo.dende.gal/craftboard-template-collections"
+                  href="https://carlosg.craft.me/craftboard-template-collections"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="template-link"

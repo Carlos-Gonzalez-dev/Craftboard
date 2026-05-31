@@ -3,9 +3,11 @@
   <h1>Craftboard</h1>
   <p>A customizable dashboard for Craft.do</p>
   <p>
-    <a href="https://craftboard.dende.gal">🌐 Live Demo</a>
+    <a href="https://app.carlosg.eu/craftboard">🌐 Live Demo</a>
   </p>
 </div>
+
+> **Note:** This project is an abandoned experiment and is no longer actively maintained.
 
 ## About
 

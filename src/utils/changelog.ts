@@ -5,6 +5,10 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: '2026-05-31',
+    changes: ['Changed domain of the app, updated build process'],
+  },
+  {
     date: '2026-01-17',
     changes: ['Added support for a custom proxy server for RSS feeds'],
   },
