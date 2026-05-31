@@ -33,10 +33,7 @@ import { useWidgetView } from './composables/useWidgetView'
 import { usePanes } from './composables/usePanes'
 import { useActiveTimers } from './composables/useActiveTimers'
 import { useBadgeAndTitle } from './composables/useBadgeAndTitle'
-import {
-  useKeyboardShortcuts,
-  keyboardShortcutsEnabled,
-} from './composables/useKeyboardShortcuts'
+import { useKeyboardShortcuts, keyboardShortcutsEnabled } from './composables/useKeyboardShortcuts'
 import { useTasksStore } from './stores/tasks'
 import ViewSubheader from './components/ViewSubheader.vue'
 import PaneTabs from './components/PaneTabs.vue'
@@ -114,9 +111,7 @@ provide('showAddWidgetModal', showAddWidgetModal)
 const clipboardUrl = ref<string | null>(null)
 const pendingPinUrl = ref<string | null>(null)
 const clipboardPermissionState = ref<PermissionState | null>(null)
-const clipboardAutoDetectEnabled = ref(
-  localStorage.getItem('clipboard-auto-detect') === 'true',
-)
+const clipboardAutoDetectEnabled = ref(localStorage.getItem('clipboard-auto-detect') === 'true')
 
 provide('pendingPinUrl', pendingPinUrl)
 
@@ -698,7 +693,6 @@ onUnmounted(() => {
           </div>
           <div class="mobile-footer-right">
             <span class="mobile-footer-about">Carlos González, 2025 - 2026</span>
-            <span class="mobile-footer-contact">craftboard@carlosg.eu</span>
             <a
               href="https://carlosg.craft.me/craftboard-documentation"
               target="_blank"
@@ -855,7 +849,6 @@ onUnmounted(() => {
       </div>
       <div class="footer-right">
         <span class="footer-about">Carlos González, 2025 - 2026</span>
-        <span class="footer-contact">craftboard@carlosg.eu</span>
         <a
           href="https://carlosg.craft.me/craftboard-documentation"
           target="_blank"
@@ -1104,7 +1097,6 @@ body.study-mode .navbar {
 .global-music-player:not(:empty):hover {
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
 }
-
 
 .footer-left {
   display: flex;
