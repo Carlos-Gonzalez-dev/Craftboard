@@ -22,6 +22,12 @@ Craftboard is a Vue.js-based dashboard application that integrates with Craft.do
 
 <br />
 
+## Screenshot
+
+![Craftboard Dashboard](public/demo.png)
+
+<br />
+
 ## Quick dev setup
 
 ```sh
